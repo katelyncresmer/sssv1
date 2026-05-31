@@ -28,84 +28,37 @@ html, body {
   position: fixed; inset: 0;
   display: flex; align-items: center; justify-content: center; flex-direction: column;
   opacity: 0; pointer-events: none;
-  transition: opacity .35s ease;
+  transition: opacity .3s ease;
 }
 .scene.active { opacity: 1; pointer-events: all; }
 
-/* ── keyframes ── */
-@keyframes flyUp {
-  from { opacity: 0; transform: translateY(60px) rotate(.4deg); }
-  to   { opacity: 1; transform: translateY(0) rotate(0); }
-}
-@keyframes flyDown {
-  from { opacity: 0; transform: translateY(-50px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-@keyframes flyLeft {
-  from { opacity: 0; transform: translateX(70px); }
-  to   { opacity: 1; transform: translateX(0); }
-}
-@keyframes flyRight {
-  from { opacity: 0; transform: translateX(-70px); }
-  to   { opacity: 1; transform: translateX(0); }
-}
-@keyframes slam {
-  0%   { opacity: 0; transform: scale(3.2) translateY(-15px); filter: blur(8px); }
-  55%  { opacity: 1; filter: blur(0); transform: scale(.96) translateY(2px); }
-  75%  { transform: scale(1.04); }
-  100% { transform: scale(1); }
-}
-@keyframes fadeIn {
-  from { opacity: 0; } to { opacity: 1; }
-}
-@keyframes fadeUp {
-  from { opacity: 0; transform: translateY(22px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-@keyframes strikeDraw {
-  from { transform: scaleX(0); }
-  to   { transform: scaleX(1); }
-}
-@keyframes shakeEl {
+/* Only used for the shake effect — oscillation can't be done with transitions */
+@keyframes shakeIt {
   0%,100% { transform: translateX(0) rotate(0); }
-  15%  { transform: translateX(-8px) rotate(-.6deg); }
-  30%  { transform: translateX(9px)  rotate(.6deg); }
-  50%  { transform: translateX(-6px) rotate(-.3deg); }
-  70%  { transform: translateX(6px)  rotate(.3deg); }
-  85%  { transform: translateX(-3px); }
-}
-@keyframes checkBounce {
-  0%   { opacity: 0; transform: scale(0) rotate(-25deg); }
-  55%  { transform: scale(1.2) rotate(6deg); }
-  100% { opacity: 1; transform: scale(1) rotate(0); }
+  18%  { transform: translateX(-9px) rotate(-.6deg); }
+  36%  { transform: translateX(9px)  rotate(.6deg); }
+  54%  { transform: translateX(-6px) rotate(-.3deg); }
+  72%  { transform: translateX(6px)  rotate(.3deg); }
+  88%  { transform: translateX(-3px); }
 }
 @keyframes arrowBounce {
   0%,100% { transform: translateX(0); }
   50%     { transform: translateX(10px); }
 }
-@keyframes blogin {
-  from { opacity: 0; transform: scaleY(0); transform-origin: bottom; }
-  to   { opacity: 1; transform: scaleY(1); transform-origin: bottom; }
-}
-@keyframes glow {
-  0%,100% { text-shadow: 0 0 0 transparent; }
-  50%     { text-shadow: 0 0 30px var(--tl); }
-}
-@keyframes pulse {
-  0%,100% { opacity: 1; } 50% { opacity: .45; }
-}
-@keyframes popIn {
-  0%   { opacity: 0; transform: scale(.7); }
-  60%  { transform: scale(1.08); }
-  100% { opacity: 1; transform: scale(1); }
-}
 @keyframes cursor {
   0%,100% { border-right-color: var(--dark); }
   50%     { border-right-color: transparent; }
 }
+@keyframes strikeDraw {
+  from { transform: scaleX(0); transform-origin: left; }
+  to   { transform: scaleX(1); transform-origin: left; }
+}
 
-/* ── counter ── */
-#nav { position: fixed; bottom: 22px; right: 28px; font-family: var(--sans); font-size: 11px; font-weight: 500; color: #ccc; letter-spacing: .1em; z-index: 9999; }
+#nav {
+  position: fixed; bottom: 22px; right: 28px;
+  font-family: var(--sans); font-size: 11px; font-weight: 500;
+  color: #ccc; letter-spacing: .1em; z-index: 9999;
+}
 </style>
 </head>
 <body>
@@ -122,111 +75,174 @@ html, body {
 <div class="scene" id="s10"></div>
 <div class="scene" id="s11"></div>
 <div class="scene" id="s12"></div>
-
 <div id="nav"></div>
 
 <script>
 /* ═══════════════════════════════════════════
-   ANIMATION HELPERS
+   CORE ANIMATION ENGINE
+   Uses CSS transitions — no fill-mode issues,
+   GPU-accelerated opacity + transform only.
 ═══════════════════════════════════════════ */
-function el(tag, css = '', html = '') {
-  const e = document.createElement(tag);
-  if (css) e.style.cssText = css;
-  if (html) e.innerHTML = html;
-  return e;
+
+const TR      = 'opacity .55s cubic-bezier(.22,1,.36,1),transform .55s cubic-bezier(.22,1,.36,1)';
+const TR_SLAM = 'transform .65s cubic-bezier(.34,1.4,.64,1),opacity .38s ease';
+const TR_SLOW = 'opacity .75s cubic-bezier(.22,1,.36,1),transform .75s cubic-bezier(.22,1,.36,1)';
+const TR_FADE = 'opacity .55s ease';
+
+let timers = [], rafs = [];
+
+function tick(fn, ms) { const id = setTimeout(fn, ms); timers.push(id); }
+function clearAll() { timers.forEach(clearTimeout); rafs.forEach(cancelAnimationFrame); timers = []; rafs = []; }
+
+// Force browser to flush style changes so transitions start from the correct state
+function reflow(el) { void el.offsetHeight; }
+
+/* ── prep: set "from" state instantly (no transition) ── */
+function pflyUp(el)    { el.style.cssText += ';transition:none;opacity:0;transform:translateY(30px)'; }
+function pflyDown(el)  { el.style.cssText += ';transition:none;opacity:0;transform:translateY(-30px)'; }
+function pflyRight(el) { el.style.cssText += ';transition:none;opacity:0;transform:translateX(-65px)'; }
+function pflyLeft(el)  { el.style.cssText += ';transition:none;opacity:0;transform:translateX(65px)'; }
+function pslam(el)     { el.style.cssText += ';transition:none;opacity:0;transform:scale(2.4) translateY(-12px)'; }
+function pfade(el)     { el.style.cssText += ';transition:none;opacity:0'; }
+
+/* ── show: arm transition + trigger (the reflow makes transition start from prep state) ── */
+function show(el, delay, tr = TR) {
+  tick(() => {
+    el.style.transition = tr;
+    reflow(el);
+    el.style.opacity = '1';
+    el.style.transform = 'none';
+  }, delay);
+}
+function showFade(el, delay) {
+  tick(() => {
+    el.style.transition = TR_FADE;
+    reflow(el);
+    el.style.opacity = '1';
+  }, delay);
 }
 
-function words(text, { delay = 0, stagger = 80, anim = 'flyUp', dur = '.65s', ease = 'cubic-bezier(.22,1,.36,1)', css = '' } = {}) {
-  const frag = document.createDocumentFragment();
-  text.trim().split(/\s+/).forEach((w, i) => {
+/* ── hide instantly (for reset) ── */
+function hide(el) {
+  el.style.transition = 'none';
+  el.style.opacity    = '0';
+}
+function hideAll(...els) { els.forEach(hide); }
+
+/* ── word-by-word spans ── */
+function wordSpans(text, stagger = 85, baseDelay = 0) {
+  return text.split(' ').map((word, i) => {
     const s = document.createElement('span');
-    s.textContent = w;
-    s.style.cssText = `display:inline-block;opacity:0;margin-right:.28em;${css};animation:${anim} ${dur} ${ease} ${delay + i * stagger}ms both`;
-    frag.appendChild(s);
+    s.textContent = word;
+    s.style.display = 'inline-block';
+    s.style.marginRight = '0.28em';
+    s.style.opacity = '0';
+    s.style.transform = 'translateY(28px)';
+    const delay = baseDelay + i * stagger;
+    s.style.transition = `opacity .5s cubic-bezier(.22,1,.36,1) ${delay}ms,transform .5s cubic-bezier(.22,1,.36,1) ${delay}ms`;
+    s._tr = s.style.transition;
+    return s;
   });
-  return frag;
 }
 
-function countTo(el, from, to, duration, decimals = 0, suffix = '', onDone) {
+function showWords(spans, parent) {
+  // Restore transitions (may have been nuked by reset)
+  spans.forEach(s => { s.style.transition = s._tr; });
+  reflow(parent || spans[0].parentNode);
+  spans.forEach(s => { s.style.opacity = '1'; s.style.transform = 'none'; });
+}
+
+function hideWords(spans) {
+  spans.forEach(s => {
+    s.style.transition = 'none';
+    s.style.opacity = '0';
+    s.style.transform = 'translateY(28px)';
+  });
+}
+
+/* ── number counter ── */
+function countTo(el, from, to, duration, decimals = 0, onDone) {
   const start = performance.now();
-  const ease = t => 1 - Math.pow(1 - t, 3);
-  const tick = now => {
+  const ease  = t => 1 - Math.pow(1 - t, 3);
+  const step  = now => {
     const p = Math.min((now - start) / duration, 1);
-    const v = from + (to - from) * ease(p);
-    el.textContent = v.toFixed(decimals) + suffix;
-    if (p < 1) { const id = requestAnimationFrame(tick); currentRAFs.push(id); }
+    el.textContent = (from + (to - from) * ease(p)).toFixed(decimals);
+    if (p < 1) { const id = requestAnimationFrame(step); rafs.push(id); }
     else if (onDone) onDone();
   };
-  const id = requestAnimationFrame(tick);
-  currentRAFs.push(id);
+  const id = requestAnimationFrame(step);
+  rafs.push(id);
 }
 
-function after(ms, fn) {
-  const id = setTimeout(fn, ms);
-  currentTimers.push(id);
-  return id;
+/* ── strikethrough ── */
+function strike(el, delay) {
+  tick(() => {
+    el.style.animation = 'strikeDraw .5s ease forwards';
+  }, delay);
+}
+function unstrike(el) {
+  el.style.animation = 'none';
+  el.style.transform = 'scaleX(0)';
 }
 
-function anim(el, keyframe, opts = {}) {
-  const { dur = '.6s', ease = 'cubic-bezier(.22,1,.36,1)', delay = 0, fill = 'both' } = opts;
-  el.style.animation = `${keyframe} ${dur} ${ease} ${delay}ms ${fill}`;
-}
-
-let currentTimers = [];
-let currentRAFs = [];
-
-function clearAll() {
-  currentTimers.forEach(clearTimeout);
-  currentRAFs.forEach(cancelAnimationFrame);
-  currentTimers = [];
-  currentRAFs = [];
+/* ── generic element builder ── */
+function el(tag, css, html) {
+  const e = document.createElement(tag);
+  if (css)  e.style.cssText = css;
+  if (html) e.innerHTML = html;
+  return e;
 }
 
 /* ═══════════════════════════════════════════
    SCENE BUILDERS
 ═══════════════════════════════════════════ */
 
-const scenes = [];
-
 /* ─── S1: Your content expires ─── */
 function buildS1() {
   const root = document.getElementById('s1');
-  root.style.cssText = 'text-align:center;gap:0';
+  root.style.cssText = 'text-align:center;align-items:center;justify-content:center;gap:0';
 
-  const label = el('div', `font-family:var(--sans);font-size:clamp(12px,1.8vw,17px);font-weight:500;letter-spacing:.18em;text-transform:uppercase;color:#aaa;opacity:0;margin-bottom:clamp(12px,2vh,24px)`);
+  const label = el('div',
+    'font-family:var(--sans);font-size:clamp(12px,1.8vw,17px);font-weight:500;letter-spacing:.18em;text-transform:uppercase;color:#aaa;margin-bottom:clamp(10px,2vh,22px)');
   label.textContent = 'you spent hours creating this';
 
-  const numWrap = el('div', `display:flex;align-items:flex-end;justify-content:center;gap:16px;line-height:1`);
-  const numEl = el('div', `font-family:var(--serif);font-size:clamp(140px,24vw,320px);line-height:.88;color:var(--dark);opacity:0`);
+  const numRow = el('div', 'display:flex;align-items:flex-end;justify-content:center;gap:16px');
+  const numEl  = el('div',
+    'font-family:var(--serif);font-size:clamp(130px,23vw,310px);line-height:.88;color:var(--dark)');
   numEl.textContent = '48';
-  const unitEl = el('div', `font-family:var(--sans);font-size:clamp(28px,5vw,68px);font-weight:700;letter-spacing:-.01em;color:var(--rose);opacity:0;padding-bottom:clamp(14px,2vw,24px)`);
+  const unitEl = el('div',
+    'font-family:var(--sans);font-size:clamp(26px,4.5vw,64px);font-weight:700;color:var(--rose);padding-bottom:clamp(14px,2vw,24px);letter-spacing:-.01em');
   unitEl.textContent = 'HOURS';
-  numWrap.appendChild(numEl);
-  numWrap.appendChild(unitEl);
+  numRow.append(numEl, unitEl);
 
-  const sub = el('div', `font-family:var(--sans);font-size:clamp(14px,2vw,20px);color:#999;opacity:0;margin-top:clamp(16px,2.5vh,32px);font-weight:400`);
+  const sub = el('div',
+    'font-family:var(--sans);font-size:clamp(14px,2vw,20px);color:#999;margin-top:clamp(14px,2.5vh,30px)');
   sub.textContent = 'before the algorithm stops showing it';
 
-  root.append(label, numWrap, sub);
+  root.append(label, numRow, sub);
 
   return {
     play() {
-      anim(label, 'fadeUp', { dur: '.7s', delay: 0 });
-      after(400, () => anim(numEl, 'slam', { dur: '.8s', ease: 'cubic-bezier(.22,1,.36,1)' }));
-      after(700, () => anim(unitEl, 'slam', { dur: '.7s', ease: 'cubic-bezier(.22,1,.36,1)' }));
-      after(1200, () => {
-        countTo(numEl, 48, 2, 1800, 0, '', () => {
-          after(0, () => {
-            numEl.style.color = 'var(--rose)';
-            anim(numEl, 'shakeEl', { dur: '.5s' });
-          });
+      pflyDown(label); pflyDown(numEl); pflyDown(unitEl); pflyDown(sub);
+
+      show(label,  0);
+      show(numEl,  180, TR_SLAM);
+      show(unitEl, 320, TR_SLAM);
+
+      tick(() => {
+        countTo(numEl, 48, 2, 1800, 0, () => {
+          numEl.style.color = 'var(--rose)';
+          numEl.style.animation = 'shakeIt .5s ease';
+          tick(() => { numEl.style.animation = ''; }, 520);
         });
-      });
-      after(2200, () => anim(sub, 'fadeUp', { dur: '.6s' }));
+      }, 500);
+
+      show(sub, 1400);
     },
     reset() {
-      [label, numEl, unitEl, sub].forEach(e => { e.style.animation = 'none'; e.style.opacity = '0'; });
+      hideAll(label, numEl, unitEl, sub);
       numEl.style.color = 'var(--dark)';
+      numEl.style.animation = '';
       numEl.textContent = '48';
     }
   };
@@ -235,87 +251,85 @@ function buildS1() {
 /* ─── S2: Half-life bars ─── */
 function buildS2() {
   const root = document.getElementById('s2');
-  root.style.cssText = 'align-items:flex-start;padding-left:max(40px,7vw);padding-right:0;padding-top:clamp(40px,6vh,80px);justify-content:center;gap:0';
+  root.style.cssText = 'align-items:flex-start;padding-left:max(40px,7vw);padding-right:0;justify-content:center';
 
-  const title = el('div', `font-family:var(--sans);font-size:clamp(11px,1.4vw,14px);font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:#aaa;opacity:0;margin-bottom:clamp(24px,4vh,48px)`);
-  title.textContent = 'content half-life  ·  when 50% of engagement dies';
+  const title = el('div',
+    'font-family:var(--sans);font-size:clamp(11px,1.4vw,14px);font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:#aaa;margin-bottom:clamp(20px,4vh,44px)');
+  title.textContent = 'content half-life  ·  when 50% of all engagement dies';
   root.appendChild(title);
 
   const BARS = [
-    { name: 'TikTok',    hrs: 0.08,        color: 'var(--rose)',          opacity: .5,  val: '~0 min',   special: false },
-    { name: 'Instagram', hrs: 18.27,        color: 'var(--rose)',          opacity: .85, val: '18.27 hrs', special: false },
-    { name: 'LinkedIn',  hrs: 23,           color: '#b5a5a2',              opacity: 1,   val: '23 hrs',   special: false },
-    { name: 'Podcast',   hrs: 7 * 24,       color: '#999',                 opacity: 1,   val: '7 days',   special: false },
-    { name: 'YouTube',   hrs: 10 * 24,      color: 'var(--teal)',          opacity: 1,   val: '10 days',  special: false },
-    { name: 'Blogging',  hrs: 2 * 365 * 24, color: 'var(--teal)',          opacity: 1,   val: '2 YEARS',  special: true  },
+    { name: 'TikTok',    hrs: 0.08,        fill: 'background:var(--rose);opacity:.45',  val: '~0 min'   },
+    { name: 'Instagram', hrs: 18.27,        fill: 'background:var(--rose)',              val: '18.27 hrs' },
+    { name: 'LinkedIn',  hrs: 23,           fill: 'background:#b5a5a2',                  val: '23 hrs'   },
+    { name: 'Podcast',   hrs: 7 * 24,       fill: 'background:#999',                     val: '7 days'   },
+    { name: 'YouTube',   hrs: 10 * 24,      fill: 'background:linear-gradient(90deg,var(--teal),var(--tl))', val: '10 days'  },
+    { name: 'Blogging',  hrs: 2 * 365 * 24, fill: 'background:linear-gradient(90deg,var(--teal),var(--tl),var(--teal),var(--tl))', val: '2 YEARS', special: true },
   ];
 
-  const maxHrs = 10 * 24; // YouTube = reference 100%
-  const trackRef = '65vw';
-  const barH = 'clamp(18px,2.8vh,28px)';
+  const rowEls = [], fillEls = [], valEls = [];
 
-  const rowEls = [];
-  const fillEls = [];
-  const valEls = [];
-
-  BARS.forEach((b, i) => {
-    const row = el('div', `display:flex;align-items:center;margin-bottom:clamp(8px,1.6vh,16px);opacity:0`);
-    const lbl = el('div', `font-family:var(--sans);font-size:clamp(10px,1.2vw,13px);font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:#555;width:82px;flex-shrink:0;text-align:right;padding-right:14px`);
+  BARS.forEach(b => {
+    const row = el('div', 'display:flex;align-items:center;margin-bottom:clamp(8px,1.6vh,16px)');
+    const lbl = el('div',
+      'font-family:var(--sans);font-size:clamp(10px,1.2vw,13px);font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:#555;width:82px;flex-shrink:0;text-align:right;padding-right:14px');
     lbl.textContent = b.name;
 
-    const track = el('div', `overflow:hidden;flex:1;max-width:${trackRef}`);
-    const fill = el('div', `height:${barH};width:0;border-radius:0 3px 3px 0;background:${b.color};opacity:${b.opacity};transition:width 1.3s cubic-bezier(.22,1,.36,1)`);
-    if (b.special) {
-      fill.style.background = `linear-gradient(90deg,var(--teal),var(--tl),var(--teal),var(--tl))`;
-      fill.style.backgroundSize = '200% 100%';
-    }
+    const track = el('div', 'overflow:hidden;flex:1;max-width:65vw');
+    const fill  = el('div',
+      `height:clamp(18px,2.8vh,28px);width:0;border-radius:0 3px 3px 0;transition:none;${b.fill}`);
+    if (b.special) fill.style.backgroundSize = '300% 100%';
     track.appendChild(fill);
 
-    const valStyle = b.special
-      ? `font-family:var(--sans);font-size:clamp(13px,1.8vw,18px);font-weight:700;color:var(--teal);margin-left:14px;white-space:nowrap;opacity:0;transition:opacity .4s`
-      : `font-family:var(--sans);font-size:clamp(10px,1.2vw,13px);font-weight:600;color:#888;margin-left:12px;white-space:nowrap;opacity:0;transition:opacity .4s`;
-    const valEl = el('div', valStyle);
+    const vs = b.special
+      ? 'font-family:var(--sans);font-size:clamp(13px,1.8vw,18px);font-weight:700;color:var(--teal);margin-left:14px;white-space:nowrap;opacity:0;transition:none'
+      : 'font-family:var(--sans);font-size:clamp(10px,1.2vw,13px);font-weight:600;color:#888;margin-left:12px;white-space:nowrap;opacity:0;transition:none';
+    const valEl = el('div', vs);
     valEl.textContent = b.val;
 
     row.append(lbl, track, valEl);
     root.appendChild(row);
-    rowEls.push(row);
-    fillEls.push(fill);
-    valEls.push(valEl);
+    rowEls.push(row); fillEls.push(fill); valEls.push(valEl);
   });
 
   return {
     play() {
-      anim(title, 'fadeUp', { dur: '.6s', delay: 0 });
+      pflyRight(title);
+      show(title, 0);
 
       BARS.forEach((b, i) => {
-        const delay = 300 + i * 280;
-        after(delay, () => {
-          anim(rowEls[i], 'fadeUp', { dur: '.5s' });
-          rowEls[i].style.opacity = '1';
-        });
-        after(delay + 100, () => {
-          const trackW = rowEls[i].querySelector('div + div').offsetWidth;
+        pflyRight(rowEls[i]);
+        show(rowEls[i], 250 + i * 260);
+
+        tick(() => {
+          const trackW = fillEls[i].parentNode.offsetWidth || window.innerWidth * 0.65;
+          const maxHrs = 10 * 24;
           let targetPx;
           if (b.special) {
-            // blog bar extends beyond screen
-            targetPx = Math.max(window.innerWidth * 1.8, 2000);
+            targetPx = Math.max(window.innerWidth * 2, 2400);
           } else {
-            const ratio = Math.max(b.hrs / maxHrs, 0.003);
-            targetPx = Math.min(ratio * trackW, trackW);
+            targetPx = Math.max((b.hrs / maxHrs) * trackW, 5);
           }
+          fillEls[i].style.transition = 'width 1.3s cubic-bezier(.22,1,.36,1)';
+          reflow(fillEls[i]);
           fillEls[i].style.width = targetPx + 'px';
-        });
-        after(delay + 1400, () => { valEls[i].style.opacity = '1'; });
+        }, 350 + i * 260);
+
+        tick(() => {
+          valEls[i].style.transition = TR_FADE;
+          reflow(valEls[i]);
+          valEls[i].style.opacity = '1';
+        }, 350 + i * 260 + 1350);
       });
     },
     reset() {
-      title.style.animation = 'none'; title.style.opacity = '0';
+      hide(title);
       rowEls.forEach((r, i) => {
-        r.style.animation = 'none'; r.style.opacity = '0';
-        fillEls[i].style.transition = 'none'; fillEls[i].style.width = '0';
+        hide(r);
+        fillEls[i].style.transition = 'none';
+        fillEls[i].style.width = '0';
+        valEls[i].style.transition = 'none';
         valEls[i].style.opacity = '0';
-        after(20, () => { fillEls[i].style.transition = 'width 1.3s cubic-bezier(.22,1,.36,1)'; });
       });
     }
   };
@@ -324,64 +338,49 @@ function buildS2() {
 /* ─── S3: Feed the machine ─── */
 function buildS3() {
   const root = document.getElementById('s3');
-  root.style.cssText = 'overflow:hidden;position:fixed;align-items:center;justify-content:center';
+  root.style.cssText = 'overflow:hidden';
 
-  const items = [];
   const configs = [
-    { txt: 'fresh content',      size: 'clamp(18px,2.5vw,28px)',  x: '50%',  y: '72%',  rot: '-1deg', italic: true,  color: '#bbb',        delay: 0    },
-    { txt: 'FRESH CONTENT',      size: 'clamp(36px,5.5vw,64px)',  x: '50%',  y: '60%',  rot: '0deg',  italic: false, color: 'var(--dark)',  delay: 500  },
-    { txt: 'FRESH CONTENT',      size: 'clamp(52px,7.5vw,90px)',  x: '50%',  y: '46%',  rot: '-1.5deg',italic: false,color: 'var(--teal)', delay: 1000 },
-    { txt: 'FRESH CONTENT',      size: 'clamp(70px,11vw,130px)', x: '50%',  y: '30%',  rot: '1deg',  italic: false, color: 'var(--dark)',  delay: 1500 },
-    { txt: 'FRESH CONTENT',      size: 'clamp(88px,14vw,170px)', x: '50%',  y: '50%',  rot: '-.5deg',italic: false, color: 'var(--rose)',  delay: 2000 },
+    { txt: 'fresh content',    size: 'clamp(18px,2.5vw,28px)', x: '50%', y: '74%', col: '#bbb',        italic: true  },
+    { txt: 'FRESH CONTENT',    size: 'clamp(36px,5.5vw,64px)', x: '50%', y: '62%', col: 'var(--dark)', italic: false },
+    { txt: 'FRESH CONTENT',    size: 'clamp(52px,7.5vw,88px)', x: '50%', y: '50%', col: 'var(--teal)', italic: false },
+    { txt: 'FRESH CONTENT',    size: 'clamp(68px,11vw,128px)', x: '50%', y: '38%', col: 'var(--dark)', italic: false },
+    { txt: 'FRESH CONTENT',    size: 'clamp(84px,14vw,168px)', x: '50%', y: '52%', col: 'var(--rose)', italic: false },
   ];
 
-  configs.forEach(c => {
-    const d = el('div', `
-      font-family:var(--serif);
-      font-size:${c.size};
-      font-style:${c.italic ? 'italic' : 'normal'};
-      color:${c.color};
-      position:absolute;
-      left:${c.x};transform:translateX(-50%);
-      top:${c.y};
-      white-space:nowrap;
-      opacity:0;
-      letter-spacing:-.02em;
-      line-height:1
-    `);
+  const items = configs.map(c => {
+    const d = el('div',
+      `font-family:var(--serif);font-size:${c.size};font-style:${c.italic ? 'italic':'normal'};` +
+      `color:${c.col};position:absolute;left:${c.x};transform:translateX(-50%);top:${c.y};` +
+      `white-space:nowrap;line-height:1;letter-spacing:-.02em;opacity:0`);
     d.textContent = c.txt;
     root.appendChild(d);
-    items.push({ el: d, delay: c.delay });
+    return d;
   });
 
-  const forever = el('div', `
-    font-family:var(--sans);
-    font-size:clamp(16px,2.8vw,32px);
-    font-weight:700;
-    color:var(--rose);
-    position:absolute;
-    bottom:12vh;left:50%;
-    transform:translateX(-50%);
-    white-space:nowrap;
-    opacity:0;
-    letter-spacing:.04em
-  `);
-  forever.textContent = 'every. single. day. forever?? constantly???';
+  const forever = el('div',
+    'font-family:var(--sans);font-size:clamp(15px,2.5vw,30px);font-weight:700;color:var(--rose);' +
+    'position:absolute;bottom:11vh;left:50%;transform:translateX(-50%);white-space:nowrap;' +
+    'letter-spacing:.02em;opacity:0');
+  forever.textContent = 'every. single. day.  forever??  constantly???';
   root.appendChild(forever);
 
   return {
     play() {
-      items.forEach(({ el: e, delay }) => {
-        after(delay, () => { anim(e, 'slam', { dur: '.6s', ease: 'cubic-bezier(.22,1,.36,1)' }); });
-      });
-      after(2600, () => {
-        items.forEach(({ el: e }) => anim(e, 'shakeEl', { dur: '.5s', fill: 'forwards' }));
-      });
-      after(2700, () => { anim(forever, 'flyUp', { dur: '.5s' }); });
+      items.forEach(e => pflyDown(e));
+      pflyDown(forever);
+
+      items.forEach((e, i) => show(e, i * 500, TR_SLAM));
+      tick(() => {
+        items.forEach(e => { e.style.animation = 'shakeIt .5s ease'; });
+        tick(() => { items.forEach(e => { e.style.animation = ''; }); }, 520);
+      }, items.length * 500 + 100);
+
+      show(forever, items.length * 500 + 200);
     },
     reset() {
-      items.forEach(({ el: e }) => { e.style.animation = 'none'; e.style.opacity = '0'; });
-      forever.style.animation = 'none'; forever.style.opacity = '0';
+      hideAll(...items, forever);
+      items.forEach(e => { e.style.animation = ''; });
     }
   };
 }
@@ -389,37 +388,46 @@ function buildS3() {
 /* ─── S4: Your time cost ─── */
 function buildS4() {
   const root = document.getElementById('s4');
-  root.style.cssText = 'text-align:center;gap:0;align-items:center;padding:clamp(40px,6vw,80px)';
+  root.style.cssText = 'text-align:center;align-items:center;justify-content:center;padding:clamp(40px,6vw,80px)';
 
-  const q = el('div', `font-family:var(--sans);font-size:clamp(15px,2.2vw,24px);font-weight:400;color:#888;opacity:0;margin-bottom:clamp(16px,3vh,40px);max-width:560px;line-height:1.5`);
+  const q = el('div',
+    'font-family:var(--sans);font-size:clamp(15px,2.2vw,24px);font-weight:400;color:#888;' +
+    'margin-bottom:clamp(16px,3vh,40px);max-width:560px;line-height:1.55');
   q.textContent = 'how long does it take to make one high-quality piece of content?';
 
-  const numRow = el('div', `display:flex;align-items:flex-end;justify-content:center;gap:14px`);
-  const numEl = el('div', `font-family:var(--serif);font-size:clamp(120px,20vw,260px);line-height:.9;color:var(--dark);opacity:0`);
+  const numRow = el('div', 'display:flex;align-items:flex-end;justify-content:center;gap:14px');
+  const numEl  = el('div',
+    'font-family:var(--serif);font-size:clamp(120px,20vw,260px);line-height:.9;color:var(--dark)');
   numEl.textContent = '0';
-  const hrLbl = el('div', `font-family:var(--sans);font-size:clamp(20px,3.5vw,44px);font-weight:700;color:var(--teal);opacity:0;padding-bottom:clamp(10px,1.5vw,18px);letter-spacing:-.02em`);
+  const hrLbl = el('div',
+    'font-family:var(--sans);font-size:clamp(20px,3.5vw,44px);font-weight:700;color:var(--teal);' +
+    'padding-bottom:clamp(10px,1.5vw,18px);letter-spacing:-.02em');
   hrLbl.textContent = 'HOURS';
   numRow.append(numEl, hrLbl);
 
-  const perDay = el('div', `font-family:var(--sans);font-size:clamp(14px,2vw,22px);font-weight:500;color:#aaa;opacity:0;margin-top:clamp(10px,1.5vh,20px);letter-spacing:.04em`);
+  const perDay = el('div',
+    'font-family:var(--sans);font-size:clamp(14px,2vw,22px);font-weight:500;color:#aaa;margin-top:clamp(10px,1.5vh,20px);letter-spacing:.04em');
   perDay.textContent = '× every single day';
 
-  const resultWrap = el('div', `font-family:var(--serif);font-size:clamp(22px,3.8vw,52px);font-style:italic;color:var(--rose);opacity:0;margin-top:clamp(8px,1.2vh,16px)`);
-  resultWrap.textContent = "that’s your entire year.";
+  const result = el('div',
+    'font-family:var(--serif);font-size:clamp(22px,3.8vw,52px);font-style:italic;color:var(--rose);margin-top:clamp(8px,1.2vh,16px)');
+  result.textContent = "that's your entire year.";
 
-  root.append(q, numRow, perDay, resultWrap);
+  root.append(q, numRow, perDay, result);
 
   return {
     play() {
-      anim(q, 'fadeUp', { dur: '.7s', delay: 0 });
-      after(600, () => anim(numEl, 'slam', { dur: '.7s' }));
-      after(800, () => anim(hrLbl, 'slam', { dur: '.6s' }));
-      after(900, () => countTo(numEl, 0, 3, 1400, 0));
-      after(2400, () => anim(perDay, 'fadeUp', { dur: '.5s' }));
-      after(3000, () => anim(resultWrap, 'fadeUp', { dur: '.6s' }));
+      pflyDown(q); pflyDown(numEl); pflyDown(hrLbl); pflyDown(perDay); pflyDown(result);
+
+      show(q, 0);
+      show(numEl,  500, TR_SLAM);
+      show(hrLbl,  640, TR_SLAM);
+      tick(() => countTo(numEl, 0, 3, 1400, 0), 800);
+      show(perDay, 2400);
+      show(result, 3100);
     },
     reset() {
-      [q, numEl, hrLbl, perDay, resultWrap].forEach(e => { e.style.animation = 'none'; e.style.opacity = '0'; });
+      hideAll(q, numEl, hrLbl, perDay, result);
       numEl.textContent = '0';
     }
   };
@@ -428,120 +436,128 @@ function buildS4() {
 /* ─── S5: 2 Years ─── */
 function buildS5() {
   const root = document.getElementById('s5');
-  root.style.cssText = 'text-align:center;gap:0;align-items:center';
+  root.style.cssText = 'text-align:center;align-items:center;justify-content:center';
 
-  const topLabel = el('div', `font-family:var(--sans);font-size:clamp(11px,1.5vw,15px);font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:#aaa;opacity:0;margin-bottom:clamp(8px,1.5vh,16px)`);
-  topLabel.textContent = 'blog post half-life';
+  const topLbl = el('div',
+    'font-family:var(--sans);font-size:clamp(11px,1.5vw,15px);font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:#aaa;margin-bottom:clamp(8px,1.5vh,16px)');
+  topLbl.textContent = 'blog post half-life';
 
-  const bigWrap = el('div', `display:flex;align-items:flex-end;justify-content:center;gap:16px;line-height:1`);
-  const bigNum = el('div', `font-family:var(--serif);font-size:clamp(140px,26vw,340px);line-height:.85;color:var(--teal);opacity:0`);
+  const bigRow = el('div', 'display:flex;align-items:flex-end;justify-content:center;gap:16px;line-height:1');
+  const bigNum = el('div',
+    'font-family:var(--serif);font-size:clamp(140px,26vw,340px);line-height:.85;color:var(--teal)');
   bigNum.textContent = '0';
-  const yearsLbl = el('div', `font-family:var(--sans);font-size:clamp(28px,5vw,68px);font-weight:700;color:var(--teal);opacity:0;padding-bottom:clamp(12px,2vw,22px);letter-spacing:-.02em`);
-  yearsLbl.textContent = 'YEARS';
-  bigWrap.append(bigNum, yearsLbl);
+  const yrLbl = el('div',
+    'font-family:var(--sans);font-size:clamp(28px,5vw,68px);font-weight:700;color:var(--teal);letter-spacing:-.02em;padding-bottom:clamp(12px,2vw,22px)');
+  yrLbl.textContent = 'YEARS';
+  bigRow.append(bigNum, yrLbl);
 
-  const note = el('div', `font-family:var(--sans);font-size:clamp(12px,1.6vw,17px);font-style:italic;color:#aaa;opacity:0;margin-top:clamp(8px,1.2vh,16px)`);
-  note.textContent = '(and that\'s just the half-life)';
+  const note = el('div',
+    'font-family:var(--sans);font-size:clamp(12px,1.6vw,17px);font-style:italic;color:#aaa;margin-top:clamp(8px,1.2vh,16px)');
+  note.textContent = "(that's just the half-life)";
 
-  const vsRow = el('div', `display:flex;align-items:center;gap:clamp(16px,3vw,40px);margin-top:clamp(24px,4vh,48px);justify-content:center;opacity:0`);
+  // VS row
+  const vsRow = el('div',
+    'display:flex;align-items:center;gap:clamp(16px,3vw,40px);margin-top:clamp(24px,4vh,48px);justify-content:center');
 
-  const makeVsItem = (platform, time, color) => {
-    const wrap = el('div', `text-align:center`);
-    const t = el('div', `font-family:var(--serif);font-size:clamp(22px,3.5vw,44px);color:${color};position:relative;display:inline-block`);
+  const makeItem = (platform, time, color) => {
+    const wrap = el('div', 'text-align:center');
+    const t    = el('div', `font-family:var(--serif);font-size:clamp(22px,3.5vw,44px);color:${color};position:relative;display:inline-block`);
     t.textContent = time;
-    const strike = el('div', `position:absolute;left:0;top:50%;width:100%;height:2.5px;background:var(--rose);transform:scaleX(0);transform-origin:left;transition:transform .5s ease`);
-    t.appendChild(strike);
-    const p = el('div', `font-family:var(--sans);font-size:clamp(9px,1.1vw,12px);font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#bbb;margin-top:4px`);
+    const bar  = el('div',
+      'position:absolute;left:0;top:50%;width:100%;height:2.5px;background:var(--rose);transform:scaleX(0);transform-origin:left');
+    t.appendChild(bar);
+    const p = el('div', 'font-family:var(--sans);font-size:clamp(9px,1.1vw,12px);font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#bbb;margin-top:4px');
     p.textContent = platform;
     wrap.append(t, p);
-    return { wrap, strike };
+    return { wrap, bar };
   };
 
-  const ig = makeVsItem('Instagram', '18 hrs', 'var(--rose)');
-  const li = makeVsItem('LinkedIn', '23 hrs', '#b5a5a2');
-  const sep = el('div', `font-family:var(--sans);font-size:clamp(16px,2.5vw,28px);color:#ddd;align-self:center`);
+  const ig  = makeItem('Instagram', '18 hrs', 'var(--rose)');
+  const sep = el('div', 'font-family:var(--sans);font-size:clamp(16px,2.5vw,28px);color:#ddd;align-self:center');
   sep.textContent = '·';
+  const li  = makeItem('LinkedIn', '23 hrs', '#b5a5a2');
   vsRow.append(ig.wrap, sep, li.wrap);
 
-  root.append(topLabel, bigWrap, note, vsRow);
+  root.append(topLbl, bigRow, note, vsRow);
 
   return {
     play() {
-      anim(topLabel, 'fadeUp', { dur: '.5s', delay: 0 });
-      after(300, () => anim(bigNum, 'slam', { dur: '.8s' }));
-      after(500, () => anim(yearsLbl, 'slam', { dur: '.7s' }));
-      after(400, () => countTo(bigNum, 0, 2, 1600, 0));
-      after(1800, () => anim(note, 'fadeUp', { dur: '.5s' }));
-      after(2200, () => { anim(vsRow, 'fadeUp', { dur: '.5s' }); vsRow.style.opacity = '1'; });
-      after(2800, () => { ig.strike.style.transform = 'scaleX(1)'; li.strike.style.transform = 'scaleX(1)'; });
+      pflyDown(topLbl); pflyDown(bigNum); pflyDown(yrLbl); pflyDown(note);
+      pflyDown(vsRow);
+      ig.bar.style.animation = 'none'; ig.bar.style.transform = 'scaleX(0)';
+      li.bar.style.animation = 'none'; li.bar.style.transform = 'scaleX(0)';
+
+      show(topLbl, 0);
+      show(bigNum,  280, TR_SLAM);
+      show(yrLbl,   420, TR_SLAM);
+      tick(() => countTo(bigNum, 0, 2, 1500, 0), 500);
+      show(note, 1800);
+      show(vsRow, 2200);
+      tick(() => {
+        ig.bar.style.animation = 'strikeDraw .5s ease forwards';
+        li.bar.style.animation = 'strikeDraw .5s ease .15s forwards';
+      }, 2900);
     },
     reset() {
-      [topLabel, bigNum, yearsLbl, note, vsRow].forEach(e => { e.style.animation = 'none'; e.style.opacity = '0'; });
+      hideAll(topLbl, bigNum, yrLbl, note, vsRow);
       bigNum.textContent = '0';
-      ig.strike.style.transform = 'scaleX(0)';
-      li.strike.style.transform = 'scaleX(0)';
+      ig.bar.style.animation = 'none'; ig.bar.style.transform = 'scaleX(0)';
+      li.bar.style.animation = 'none'; li.bar.style.transform = 'scaleX(0)';
     }
   };
 }
 
-/* ─── S6: Compounding ─── */
+/* ─── S6: Compounds ─── */
 function buildS6() {
   const root = document.getElementById('s6');
   root.style.cssText = 'align-items:center;justify-content:center;padding:clamp(40px,6vw,80px)';
 
-  const title = el('div', `font-family:var(--sans);font-size:clamp(11px,1.4vw,14px);font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:#aaa;opacity:0;margin-bottom:clamp(20px,4vh,48px)`);
-  title.textContent = 'SEO content compounds over time';
+  const title = el('div',
+    'font-family:var(--sans);font-size:clamp(11px,1.4vw,14px);font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:#aaa;margin-bottom:clamp(20px,4vh,44px)');
+  title.textContent = 'SEO content compounds — every post adds to the last';
 
-  const chartWrap = el('div', `display:flex;align-items:flex-end;gap:clamp(6px,1.2vw,14px);height:clamp(140px,22vh,220px);position:relative`);
+  const HEIGHTS = [15, 26, 40, 56, 72, 88, 100];
+  const chartWrap = el('div', 'display:flex;align-items:flex-end;gap:clamp(6px,1.2vw,14px);height:clamp(140px,22vh,220px)');
 
-  const COLS = [
-    { h: 18, label: '1' },
-    { h: 28, label: '2' },
-    { h: 42, label: '3' },
-    { h: 58, label: '4' },
-    { h: 76, label: '5' },
-    { h: 95, label: '6' },
-    { h: 100, label: '7' },
-  ];
-
-  const bars = [];
-  COLS.forEach(c => {
-    const col = el('div', `display:flex;flex-direction:column;align-items:center;gap:8px`);
-    const bar = el('div', `width:clamp(36px,5vw,56px);height:0;border-radius:4px 4px 0 0;background:var(--teal);opacity:0;transition:height .9s cubic-bezier(.22,1,.36,1);flex-shrink:0`);
-    const lbl = el('div', `font-family:var(--sans);font-size:clamp(9px,1vw,11px);font-weight:600;color:#bbb;letter-spacing:.06em`);
-    lbl.textContent = `Blog ${c.label}`;
+  const bars = HEIGHTS.map((h, i) => {
+    const col = el('div', 'display:flex;flex-direction:column;align-items:center;gap:8px');
+    const bar = el('div',
+      `width:clamp(34px,5vw,54px);height:0;border-radius:4px 4px 0 0;transition:none;` +
+      `background:${i % 2 === 0 ? 'var(--teal)' : 'var(--tl)'};flex-shrink:0`);
+    const lbl = el('div',
+      'font-family:var(--sans);font-size:clamp(9px,1vw,11px);font-weight:600;color:#bbb;letter-spacing:.05em');
+    lbl.textContent = `Blog ${i + 1}`;
     col.append(bar, lbl);
     chartWrap.appendChild(col);
-    bars.push({ bar, h: c.h });
+    return { bar, h };
   });
 
-  const trafficLbl = el('div', `font-family:var(--serif);font-size:clamp(20px,3.5vw,48px);font-style:italic;color:var(--teal);opacity:0;margin-top:clamp(20px,3.5vh,44px);text-align:center`);
-  trafficLbl.innerHTML = 'traffic that grows — not disappears';
+  const tagline = el('div',
+    'font-family:var(--serif);font-size:clamp(20px,3.5vw,48px);font-style:italic;color:var(--teal);margin-top:clamp(20px,3.5vh,44px);text-align:center');
+  tagline.textContent = 'traffic that grows — not disappears';
 
-  root.append(title, chartWrap, trafficLbl);
+  root.append(title, chartWrap, tagline);
 
   return {
     play() {
-      anim(title, 'fadeUp', { dur: '.5s', delay: 0 });
+      pflyDown(title); pflyDown(tagline);
+      bars.forEach(({ bar }) => { bar.style.transition = 'none'; bar.style.height = '0'; bar.style.opacity = '0'; });
+
+      show(title, 0);
       bars.forEach(({ bar, h }, i) => {
-        after(400 + i * 220, () => {
-          const maxH = chartWrap.offsetHeight || 220;
+        tick(() => {
           bar.style.opacity = '1';
-          bar.style.background = i % 2 === 0 ? 'var(--teal)' : 'var(--tl)';
-          after(20, () => { bar.style.height = (h / 100 * maxH) + 'px'; });
-        });
+          const maxH = chartWrap.offsetHeight || 220;
+          bar.style.transition = 'height .9s cubic-bezier(.22,1,.36,1)';
+          reflow(bar);
+          bar.style.height = (h / 100 * maxH) + 'px';
+        }, 350 + i * 220);
       });
-      after(400 + bars.length * 220 + 600, () => anim(trafficLbl, 'fadeUp', { dur: '.6s' }));
+      show(tagline, 350 + HEIGHTS.length * 220 + 500);
     },
     reset() {
-      title.style.animation = 'none'; title.style.opacity = '0';
-      trafficLbl.style.animation = 'none'; trafficLbl.style.opacity = '0';
-      bars.forEach(({ bar }) => {
-        bar.style.opacity = '0';
-        bar.style.transition = 'none';
-        bar.style.height = '0';
-        after(30, () => { bar.style.transition = 'height .9s cubic-bezier(.22,1,.36,1)'; });
-      });
+      hide(title); hide(tagline);
+      bars.forEach(({ bar }) => { bar.style.transition = 'none'; bar.style.height = '0'; bar.style.opacity = '0'; });
     }
   };
 }
@@ -551,47 +567,57 @@ function buildS7() {
   const root = document.getElementById('s7');
   root.style.cssText = 'text-align:center;align-items:center;justify-content:center;padding:clamp(40px,6vw,80px)';
 
-  const building = el('div', `font-family:var(--sans);font-size:clamp(16px,2.5vw,28px);font-weight:400;color:#999;opacity:0;margin-bottom:8px`);
+  const building = el('div',
+    'font-family:var(--sans);font-size:clamp(16px,2.5vw,28px);font-weight:400;color:#999;margin-bottom:8px');
   building.textContent = "you've been building your audience on";
 
-  const rentedWrap = el('div', 'display:flex;flex-direction:column;align-items:center;gap:0;margin-bottom:clamp(32px,5vh,56px)');
-
-  const rented = el('div', `font-family:var(--serif);font-size:clamp(60px,11vw,150px);line-height:1;color:var(--rose);opacity:0`);
+  const rented = el('div',
+    'font-family:var(--serif);font-size:clamp(58px,10.5vw,144px);line-height:1;color:var(--rose)');
   rented.textContent = 'RENTED';
-  const land = el('div', `font-family:var(--serif);font-size:clamp(60px,11vw,150px);line-height:1;color:var(--dark);opacity:0`);
+  const land = el('div',
+    'font-family:var(--serif);font-size:clamp(58px,10.5vw,144px);line-height:1;color:var(--dark);margin-bottom:clamp(30px,5vh,52px)');
   land.textContent = 'LAND';
-  rentedWrap.append(rented, land);
 
-  const platRow = el('div', `display:flex;gap:clamp(16px,3.5vw,48px);justify-content:center;flex-wrap:wrap;margin-bottom:clamp(24px,4vh,40px)`);
-  const platforms = ['Instagram', 'TikTok', 'LinkedIn', 'Facebook'];
-  const platEls = platforms.map(name => {
-    const p = el('div', `font-family:var(--sans);font-size:clamp(13px,2vw,22px);font-weight:600;color:#888;opacity:0;position:relative;padding:2px 0`);
+  const platRow = el('div', 'display:flex;gap:clamp(16px,3.5vw,48px);justify-content:center;flex-wrap:wrap;margin-bottom:clamp(22px,3.5vh,38px)');
+  const PLATS = ['Instagram', 'TikTok', 'LinkedIn', 'Facebook'];
+  const platEls = PLATS.map(name => {
+    const p = el('div',
+      'font-family:var(--sans);font-size:clamp(13px,2vw,22px);font-weight:600;color:#888;position:relative;padding:2px 0');
     p.textContent = name;
-    const strike = el('div', `position:absolute;left:-2px;top:50%;width:calc(100% + 4px);height:2.5px;background:var(--rose);transform:scaleX(0);transform-origin:left;transition:transform .4s ease`);
-    p.appendChild(strike);
+    const bar = el('div',
+      'position:absolute;left:-2px;top:50%;width:calc(100%+4px);height:2.5px;background:var(--rose);transform:scaleX(0);transform-origin:left');
+    p.appendChild(bar);
     platRow.appendChild(p);
-    return { el: p, strike };
+    return { el: p, bar };
   });
 
-  const ownLine = el('div', `font-family:var(--sans);font-size:clamp(13px,1.8vw,20px);font-weight:600;color:var(--teal);opacity:0;letter-spacing:.06em`);
+  const ownLine = el('div',
+    'font-family:var(--sans);font-size:clamp(13px,1.8vw,20px);font-weight:600;color:var(--teal);letter-spacing:.05em');
   ownLine.textContent = 'they can take it all tomorrow with one algorithm change';
 
-  root.append(building, rentedWrap, platRow, ownLine);
+  root.append(building, rented, land, platRow, ownLine);
 
   return {
     play() {
-      anim(building, 'fadeUp', { dur: '.6s', delay: 0 });
-      after(400, () => anim(rented, 'slam', { dur: '.75s' }));
-      after(700, () => anim(land, 'slam', { dur: '.75s' }));
-      platEls.forEach(({ el: pe }, i) => {
-        after(1400 + i * 150, () => { anim(pe, 'fadeUp', { dur: '.4s' }); });
-        after(1600 + i * 150, () => { pe.querySelector('div').style.transform = 'scaleX(1)'; });
-      });
-      after(2400, () => anim(ownLine, 'fadeUp', { dur: '.6s' }));
+      pflyDown(building); pslam(rented); pslam(land);
+      platEls.forEach(({ el: pe }) => pflyDown(pe));
+      pflyDown(ownLine);
+      platEls.forEach(({ bar }) => { bar.style.animation = 'none'; bar.style.transform = 'scaleX(0)'; });
+
+      show(building, 0);
+      show(rented, 300, TR_SLAM);
+      show(land,   480, TR_SLAM);
+      platEls.forEach(({ el: pe }, i) => show(pe, 1200 + i * 150));
+      tick(() => {
+        platEls.forEach(({ bar }, i) => {
+          bar.style.animation = `strikeDraw .4s ease ${i * 100}ms forwards`;
+        });
+      }, 1800);
+      show(ownLine, 2400);
     },
     reset() {
-      [building, rented, land, ownLine].forEach(e => { e.style.animation = 'none'; e.style.opacity = '0'; });
-      platEls.forEach(({ el: pe, strike }) => { pe.style.animation = 'none'; pe.style.opacity = '0'; strike.style.transform = 'scaleX(0)'; });
+      hideAll(building, rented, land, ownLine);
+      platEls.forEach(({ el: pe, bar }) => { hide(pe); bar.style.animation = 'none'; bar.style.transform = 'scaleX(0)'; });
     }
   };
 }
@@ -601,72 +627,75 @@ function buildS8() {
   const root = document.getElementById('s8');
   root.style.cssText = 'text-align:center;align-items:center;justify-content:center;gap:clamp(14px,2.5vh,24px);padding:clamp(40px,6vw,80px)';
 
-  const glbl = el('div', `font-family:var(--sans);font-size:clamp(11px,1.4vw,14px);font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#aaa;opacity:0`);
+  const glbl = el('div',
+    'font-family:var(--sans);font-size:clamp(11px,1.4vw,14px);font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#aaa');
   glbl.textContent = 'when your ideal client searches…';
 
-  const bar = el('div', `
-    background:white;border:2px solid #e8e8e8;border-radius:999px;
-    padding:clamp(10px,1.8vh,16px) clamp(16px,3vw,28px);
-    display:flex;align-items:center;gap:12px;
-    width:min(580px,82vw);opacity:0;
-    box-shadow:0 4px 24px rgba(0,0,0,.07)
-  `);
-  const searchIcon = el('span', `font-size:clamp(14px,2vw,18px);color:#aaa;flex-shrink:0`);
-  searchIcon.textContent = '🔍';
-  const searchTxt = el('span', `font-family:var(--sans);font-size:clamp(13px,1.8vw,18px);color:var(--dark);overflow:hidden;white-space:nowrap;border-right:2px solid var(--dark);padding-right:2px;animation:cursor .7s step-end infinite`);
-  searchTxt.textContent = '';
-  bar.append(searchIcon, searchTxt);
+  const bar = el('div',
+    'background:white;border:2px solid #e8e8e8;border-radius:999px;' +
+    'padding:clamp(10px,1.8vh,16px) clamp(16px,3vw,28px);' +
+    'display:flex;align-items:center;gap:12px;width:min(580px,82vw);' +
+    'box-shadow:0 4px 24px rgba(0,0,0,.07)');
+  const icon = el('span', 'font-size:clamp(14px,2vw,18px);color:#aaa;flex-shrink:0');
+  icon.textContent = '🔍';
+  const txt = el('span',
+    'font-family:var(--sans);font-size:clamp(13px,1.8vw,18px);color:var(--dark);' +
+    'overflow:hidden;white-space:nowrap;border-right:2px solid var(--dark);padding-right:2px;' +
+    'animation:cursor .7s step-end infinite');
+  txt.textContent = '';
+  bar.append(icon, txt);
 
-  const resultCard = el('div', `
-    background:white;border-radius:12px;
-    padding:clamp(14px,2.5vh,22px) clamp(18px,3vw,26px);
-    width:min(580px,82vw);text-align:left;opacity:0;
-    box-shadow:0 4px 20px rgba(0,0,0,.06);
-    border-left:4px solid var(--teal)
-  `);
-  const rUrl = el('div', `font-family:var(--sans);font-size:clamp(10px,1.2vw,13px);color:var(--teal);font-weight:500;margin-bottom:5px`);
+  const card = el('div',
+    'background:white;border-radius:12px;padding:clamp(14px,2.5vh,22px) clamp(18px,3vw,26px);' +
+    'width:min(580px,82vw);text-align:left;box-shadow:0 4px 20px rgba(0,0,0,.06);border-left:4px solid var(--teal)');
+  const rUrl  = el('div', 'font-family:var(--sans);font-size:clamp(10px,1.2vw,13px);color:var(--teal);font-weight:500;margin-bottom:5px');
   rUrl.textContent = 'yourwebsite.com › blog';
-  const rTitle = el('div', `font-family:var(--sans);font-size:clamp(14px,2vw,18px);font-weight:700;color:#1558d6;margin-bottom:5px`);
-  rTitle.textContent = 'How to Find the Best Brand Designer for Coaches';
-  const rSnip = el('div', `font-family:var(--sans);font-size:clamp(11px,1.4vw,14px);color:#555;line-height:1.5`);
-  rSnip.textContent = 'Looking for a brand designer who gets the coaching world? Here\'s exactly what to look for and how to find them…';
-  resultCard.append(rUrl, rTitle, rSnip);
+  const rTit  = el('div', 'font-family:var(--sans);font-size:clamp(14px,2vw,18px);font-weight:700;color:#1558d6;margin-bottom:5px');
+  rTit.textContent = 'How to Find the Best Brand Designer for Coaches';
+  const rSnip = el('div', 'font-family:var(--sans);font-size:clamp(11px,1.4vw,14px);color:#555;line-height:1.5');
+  rSnip.textContent = "Looking for a brand designer who gets the coaching world? Here's exactly what to look for…";
+  card.append(rUrl, rTit, rSnip);
 
-  const found = el('div', `font-family:var(--serif);font-size:clamp(22px,3.8vw,50px);font-style:italic;color:var(--teal);opacity:0`);
+  const found = el('div',
+    'font-family:var(--serif);font-size:clamp(22px,3.8vw,50px);font-style:italic;color:var(--teal)');
   found.textContent = 'your content. showing up. for free.';
 
-  root.append(glbl, bar, resultCard, found);
+  root.append(glbl, bar, card, found);
 
   const QUERY = 'best brand designer for coaches';
   let typeInt = null;
 
   return {
     play() {
-      anim(glbl, 'fadeUp', { dur: '.5s', delay: 0 });
-      after(400, () => { anim(bar, 'fadeUp', { dur: '.5s' }); });
-      after(800, () => {
+      pflyDown(glbl); pflyDown(bar); pflyDown(card); pflyDown(found);
+      txt.textContent = '';
+      txt.style.borderRight = '2px solid var(--dark)';
+      txt.style.animation = 'cursor .7s step-end infinite';
+
+      show(glbl, 0);
+      show(bar,  300);
+
+      tick(() => {
         let i = 0;
-        searchTxt.textContent = '';
         typeInt = setInterval(() => {
-          searchTxt.textContent += QUERY[i];
-          i++;
+          txt.textContent += QUERY[i++];
           if (i >= QUERY.length) {
             clearInterval(typeInt);
-            searchTxt.style.animation = 'none';
-            searchTxt.style.borderRight = 'none';
+            txt.style.borderRight = 'none';
+            txt.style.animation = 'none';
           }
-        }, 55);
-        currentTimers.push(typeInt);
-      });
-      after(2600, () => anim(resultCard, 'fadeUp', { dur: '.6s', ease: 'cubic-bezier(.22,1,.36,1)' }));
-      after(3400, () => anim(found, 'flyUp', { dur: '.7s' }));
+        }, 58);
+      }, 700);
+
+      show(card,  2700);
+      show(found, 3600);
     },
     reset() {
-      [glbl, bar, resultCard, found].forEach(e => { e.style.animation = 'none'; e.style.opacity = '0'; });
-      searchTxt.textContent = '';
-      searchTxt.style.borderRight = '2px solid var(--dark)';
-      searchTxt.style.animation = 'cursor .7s step-end infinite';
       clearInterval(typeInt);
+      hideAll(glbl, bar, card, found);
+      txt.textContent = '';
+      txt.style.borderRight = '2px solid var(--dark)';
+      txt.style.animation = 'cursor .7s step-end infinite';
     }
   };
 }
@@ -676,105 +705,89 @@ function buildS9() {
   const root = document.getElementById('s9');
   root.style.cssText = 'align-items:flex-start;padding:max(40px,7vw);gap:clamp(14px,2.5vh,24px);justify-content:center';
 
-  const albl = el('div', `font-family:var(--sans);font-size:clamp(11px,1.4vw,14px);font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#aaa;opacity:0`);
+  const albl = el('div',
+    'font-family:var(--sans);font-size:clamp(11px,1.4vw,14px);font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#aaa');
   albl.textContent = 'when someone asks an AI tool…';
 
-  const query = el('div', `
-    background:var(--teal);color:white;
-    border-radius:16px 16px 4px 16px;
-    padding:clamp(12px,2vh,18px) clamp(16px,2.5vw,24px);
-    max-width:min(480px,72vw);
-    align-self:flex-end;margin-left:auto;
-    font-family:var(--sans);font-size:clamp(14px,1.9vw,20px);
-    font-weight:500;line-height:1.5;opacity:0
-  `);
+  const query = el('div',
+    'background:var(--teal);color:white;border-radius:16px 16px 4px 16px;' +
+    'padding:clamp(12px,2vh,18px) clamp(16px,2.5vw,24px);max-width:min(480px,72vw);' +
+    'align-self:flex-end;margin-left:auto;font-family:var(--sans);' +
+    'font-size:clamp(14px,1.9vw,20px);font-weight:500;line-height:1.5');
   query.textContent = '"who\'s a good web designer for coaches?"';
 
-  const respCard = el('div', `
-    background:white;
-    border-radius:4px 16px 16px 16px;
-    padding:clamp(14px,2.5vh,22px) clamp(16px,2.5vw,24px);
-    max-width:min(580px,80vw);
-    box-shadow:0 4px 24px rgba(0,0,0,.07);
-    opacity:0
-  `);
+  const resp = el('div',
+    'background:white;border-radius:4px 16px 16px 16px;' +
+    'padding:clamp(14px,2.5vh,22px) clamp(16px,2.5vw,24px);max-width:min(580px,80vw);' +
+    'box-shadow:0 4px 24px rgba(0,0,0,.07)');
+  const aiHdr = el('div',
+    'font-family:var(--sans);font-size:clamp(9px,1.1vw,12px);font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#aaa;margin-bottom:12px');
+  aiHdr.textContent = 'AI  ·  based on web sources';
+  const aiTxt = el('div',
+    'font-family:var(--sans);font-size:clamp(13px,1.8vw,18px);color:#333;line-height:1.7');
+  aiTxt.innerHTML = 'Based on multiple sources, <span style="font-weight:700;color:var(--teal);background:rgba(42,191,154,.12);padding:1px 5px;border-radius:4px">Your Name Here</span> is highly recommended for web design in the coaching space. Their blog covers exactly what coaches need…';
+  const src = el('div',
+    'font-family:var(--sans);font-size:clamp(10px,1.3vw,13px);color:var(--teal);font-weight:500;margin-top:10px');
+  src.textContent = '↗ source: yourwebsite.com/blog/web-design-for-coaches';
+  resp.append(aiHdr, aiTxt, src);
 
-  const aiHeader = el('div', `font-family:var(--sans);font-size:clamp(9px,1.1vw,12px);font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#aaa;margin-bottom:12px`);
-  aiHeader.textContent = 'AI · based on web sources';
+  const punch = el('div',
+    'font-family:var(--serif);font-size:clamp(18px,3vw,40px);font-style:italic;color:var(--dark);margin-top:4px');
+  punch.innerHTML = 'social posts? <span style="color:var(--rose);text-decoration:line-through">AI doesn\'t pull from those.</span>';
 
-  const aiText = el('div', `font-family:var(--sans);font-size:clamp(13px,1.8vw,18px);color:#333;line-height:1.7`);
-  aiText.innerHTML = `Based on multiple sources, <span style="font-weight:700;color:var(--teal);background:rgba(42,191,154,.12);padding:1px 5px;border-radius:4px">Your Name Here</span> is highly recommended for web design in the coaching niche. Their blog on <span style="font-weight:600">yourniche.com</span> covers exactly what coaches need…`;
-
-  const sourceLine = el('div', `font-family:var(--sans);font-size:clamp(10px,1.3vw,13px);color:var(--teal);font-weight:500;margin-top:10px;opacity:0`);
-  sourceLine.textContent = '↗ source: yourwebsite.com/blog/web-design-for-coaches';
-
-  respCard.append(aiHeader, aiText, sourceLine);
-
-  const punchline = el('div', `font-family:var(--serif);font-size:clamp(18px,3vw,40px);font-style:italic;color:var(--dark);opacity:0;margin-top:8px`);
-  punchline.innerHTML = 'social posts? <span style="color:var(--rose);text-decoration:line-through">AI doesn\'t pull from those.</span>';
-
-  root.append(albl, query, respCard, punchline);
+  root.append(albl, query, resp, punch);
 
   return {
     play() {
-      anim(albl, 'fadeUp', { dur: '.5s', delay: 0 });
-      after(400, () => anim(query, 'flyLeft', { dur: '.6s' }));
-      after(1100, () => anim(respCard, 'flyRight', { dur: '.7s' }));
-      after(2000, () => { sourceLine.style.opacity = '1'; anim(sourceLine, 'fadeIn', { dur: '.5s' }); });
-      after(2600, () => anim(punchline, 'flyUp', { dur: '.6s' }));
+      pflyDown(albl); pflyLeft(query); pflyRight(resp); pflyDown(punch);
+      show(albl,  0);
+      show(query, 400);
+      show(resp,  1100);
+      show(punch, 2200);
     },
-    reset() {
-      [albl, query, respCard, sourceLine, punchline].forEach(e => { e.style.animation = 'none'; e.style.opacity = '0'; });
-    }
+    reset() { hideAll(albl, query, resp, punch); }
   };
 }
 
 /* ─── S10: Yours ─── */
 function buildS10() {
   const root = document.getElementById('s10');
-  root.style.cssText = 'align-items:flex-start;padding-left:max(40px,10vw);justify-content:center;gap:0';
+  root.style.cssText = 'align-items:flex-start;padding-left:max(40px,10vw);justify-content:center';
 
-  const items = [
-    { text: 'your content',  delay: 0 },
-    { text: 'your traffic',  delay: 350 },
-    { text: 'your leads',    delay: 700 },
-    { text: 'your clients',  delay: 1050 },
-  ];
-
-  const rowEls = items.map(({ text, delay }) => {
-    const row = el('div', `display:flex;align-items:center;gap:clamp(14px,2.5vw,24px);margin-bottom:clamp(10px,2vh,20px);opacity:0`);
-    const check = el('div', `
-      width:clamp(28px,4vw,44px);height:clamp(28px,4vw,44px);
-      border-radius:50%;background:var(--teal);
-      display:flex;align-items:center;justify-content:center;
-      color:white;font-size:clamp(13px,1.8vw,20px);flex-shrink:0;opacity:0
-    `);
-    check.textContent = '✓';
-    const txt = el('div', `font-family:var(--serif);font-size:clamp(36px,5.5vw,76px);line-height:1.05;color:var(--dark)`);
+  const ITEMS = ['your content', 'your traffic', 'your leads', 'your clients'];
+  const rows = ITEMS.map(text => {
+    const row  = el('div', 'display:flex;align-items:center;gap:clamp(14px,2.5vw,24px);margin-bottom:clamp(10px,2vh,20px)');
+    const chk  = el('div',
+      'width:clamp(28px,4vw,44px);height:clamp(28px,4vw,44px);border-radius:50%;background:var(--teal);' +
+      'display:flex;align-items:center;justify-content:center;color:white;font-size:clamp(13px,1.8vw,20px);flex-shrink:0');
+    chk.textContent = '✓';
+    const txt  = el('div',
+      'font-family:var(--serif);font-size:clamp(34px,5.5vw,76px);line-height:1.05;color:var(--dark)');
     txt.textContent = text;
-    row.append(check, txt);
+    row.append(chk, txt);
     root.appendChild(row);
-    return { row, check };
+    return { row, chk };
   });
 
-  const bigYours = el('div', `font-family:var(--serif);font-size:clamp(80px,13vw,190px);line-height:.92;color:var(--teal);opacity:0;margin-top:clamp(16px,2.5vh,32px)`);
+  const bigYours = el('div',
+    'font-family:var(--serif);font-size:clamp(78px,13vw,190px);line-height:.92;color:var(--teal);margin-top:clamp(14px,2.5vh,30px)');
   bigYours.textContent = 'YOURS.';
   root.appendChild(bigYours);
 
   return {
     play() {
-      items.forEach(({ delay }, i) => {
-        after(delay, () => { anim(rowEls[i].row, 'flyRight', { dur: '.6s' }); });
-        after(delay + 100, () => { anim(rowEls[i].check, 'checkBounce', { dur: '.5s' }); });
+      rows.forEach(({ row, chk }) => { pflyRight(row); pfade(chk); });
+      pslam(bigYours);
+
+      rows.forEach(({ row, chk }, i) => {
+        show(row, i * 350);
+        tick(() => { chk.style.transition = TR; reflow(chk); chk.style.opacity = '1'; }, i * 350 + 100);
       });
-      after(1500, () => anim(bigYours, 'slam', { dur: '.9s' }));
+      show(bigYours, rows.length * 350 + 200, TR_SLAM);
     },
     reset() {
-      rowEls.forEach(({ row, check }) => {
-        row.style.animation = 'none'; row.style.opacity = '0';
-        check.style.animation = 'none'; check.style.opacity = '0';
-      });
-      bigYours.style.animation = 'none'; bigYours.style.opacity = '0';
+      rows.forEach(({ row, chk }) => { hide(row); hide(chk); });
+      hide(bigYours);
     }
   };
 }
@@ -784,40 +797,43 @@ function buildS11() {
   const root = document.getElementById('s11');
   root.style.cssText = 'flex-direction:row;align-items:center;justify-content:center;gap:clamp(16px,4vw,60px);padding:clamp(40px,6vw,80px)';
 
-  const makeBlock = (labelTxt, wordTxt, metaTxt, wordColor) => {
-    const wrap = el('div', `display:flex;flex-direction:column;align-items:center;gap:clamp(8px,1.5vh,14px);opacity:0;text-align:center`);
-    const lbl = el('div', `font-family:var(--sans);font-size:clamp(10px,1.2vw,13px);font-weight:600;letter-spacing:.15em;text-transform:uppercase;color:#bbb`);
-    lbl.textContent = labelTxt;
-    const word = el('div', `font-family:var(--serif);font-size:clamp(44px,7.5vw,100px);line-height:1;color:${wordColor};letter-spacing:-.02em`);
-    word.textContent = wordTxt;
-    const meta = el('div', `font-family:var(--sans);font-size:clamp(10px,1.3vw,14px);color:#bbb;max-width:180px;line-height:1.5`);
-    meta.textContent = metaTxt;
-    wrap.append(lbl, word, meta);
+  const makeBlock = (lbTxt, wdTxt, metaTxt, color) => {
+    const wrap = el('div', 'display:flex;flex-direction:column;align-items:center;gap:clamp(8px,1.5vh,14px);text-align:center');
+    const lb   = el('div', 'font-family:var(--sans);font-size:clamp(10px,1.2vw,13px);font-weight:600;letter-spacing:.15em;text-transform:uppercase;color:#bbb');
+    lb.textContent = lbTxt;
+    const wd   = el('div', `font-family:var(--serif);font-size:clamp(44px,7.5vw,100px);line-height:1;color:${color};letter-spacing:-.02em`);
+    wd.textContent = wdTxt;
+    const mt   = el('div', 'font-family:var(--sans);font-size:clamp(10px,1.3vw,14px);color:#bbb;max-width:180px;line-height:1.5;white-space:pre-line');
+    mt.textContent = metaTxt;
+    wrap.append(lb, wd, mt);
     return wrap;
   };
 
-  const left = makeBlock('before', 'SOCIAL', 'expires in hours\nalgorithm-dependent', 'var(--rose)');
-  const right = makeBlock('after', 'SEARCH', 'lives for years\nbrings you leads forever', 'var(--teal)');
+  const left  = makeBlock('before', 'SOCIAL', 'expires in hours\nalgorithm-dependent', 'var(--rose)');
+  const right = makeBlock('after',  'SEARCH', 'lives for years\nbrings leads forever', 'var(--teal)');
 
-  const arrowWrap = el('div', `display:flex;flex-direction:column;align-items:center;gap:6px;opacity:0`);
-  const arrowChar = el('div', `font-family:var(--serif);font-size:clamp(40px,7vw,90px);color:var(--teal);line-height:1;animation:arrowBounce 1.4s ease-in-out infinite`);
-  arrowChar.textContent = '→';
-  const arrowLbl = el('div', `font-family:var(--sans);font-size:clamp(9px,1.1vw,12px);font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#bbb`);
-  arrowLbl.textContent = 'repurpose';
-  arrowWrap.append(arrowChar, arrowLbl);
+  const arrowWrap = el('div', 'display:flex;flex-direction:column;align-items:center;gap:6px');
+  const arrowCh   = el('div', 'font-family:var(--serif);font-size:clamp(40px,7vw,90px);color:var(--teal);line-height:1');
+  arrowCh.textContent = '→';
+  const arrowLb   = el('div', 'font-family:var(--sans);font-size:clamp(9px,1.1vw,12px);font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#bbb');
+  arrowLb.textContent = 'repurpose';
+  arrowWrap.append(arrowCh, arrowLb);
 
   root.append(left, arrowWrap, right);
 
   return {
     play() {
-      after(0, () => anim(left, 'flyRight', { dur: '.7s' }));
-      after(400, () => { anim(arrowWrap, 'fadeIn', { dur: '.5s' }); arrowWrap.style.opacity = '1'; });
-      after(700, () => anim(right, 'flyLeft', { dur: '.7s' }));
+      pflyRight(left); pfade(arrowWrap); pflyLeft(right);
+
+      show(left,      0);
+      showFade(arrowWrap, 500);
+      show(right,   800);
+
+      tick(() => { arrowCh.style.animation = 'arrowBounce 1.4s ease-in-out infinite'; }, 900);
     },
     reset() {
-      [left, arrowWrap, right].forEach(e => { e.style.animation = 'none'; e.style.opacity = '0'; });
-      arrowChar.style.animation = 'none';
-      after(30, () => { arrowChar.style.animation = 'arrowBounce 1.4s ease-in-out infinite'; });
+      hideAll(left, arrowWrap, right);
+      arrowCh.style.animation = 'none';
     }
   };
 }
@@ -827,37 +843,45 @@ function buildS12() {
   const root = document.getElementById('s12');
   root.style.cssText = 'text-align:center;align-items:center;justify-content:center;gap:clamp(8px,1.8vh,20px);padding:clamp(40px,6vw,80px)';
 
-  const postLine = el('div', `font-family:var(--sans);font-size:clamp(14px,2.2vw,24px);font-weight:400;color:#aaa;opacity:0;position:relative;display:inline-block`);
-  const postTxt = document.createTextNode('the post expired.');
+  const postLine = el('div', 'font-family:var(--sans);font-size:clamp(14px,2.2vw,24px);font-weight:400;color:#aaa;position:relative;display:inline-block');
+  const postTxt  = document.createTextNode('the post expired.');
   postLine.appendChild(postTxt);
-  const postStrike = el('div', `position:absolute;left:0;top:50%;width:100%;height:2px;background:var(--rose);transform:scaleX(0);transform-origin:left;transition:transform .55s ease`);
-  postLine.appendChild(postStrike);
+  const bar = el('div',
+    'position:absolute;left:0;top:50%;width:100%;height:2px;background:var(--rose);transform:scaleX(0);transform-origin:left');
+  postLine.appendChild(bar);
 
-  const ideaLine = el('div', `font-family:var(--serif);font-size:clamp(28px,5vw,68px);font-style:italic;color:var(--dark);opacity:0;line-height:1.2`);
-  ideaLine.innerHTML = `the <span style="color:var(--teal)">IDEA</span> didn't.`;
+  const ideaLine = el('div',
+    'font-family:var(--serif);font-size:clamp(28px,5vw,68px);font-style:italic;color:var(--dark);line-height:1.2');
+  ideaLine.innerHTML = 'the <span style="color:var(--teal)">IDEA</span> didn\'t.';
 
-  const giveIt = el('div', `font-family:var(--serif);font-size:clamp(44px,7.5vw,100px);line-height:1.05;color:var(--dark);opacity:0`);
-  giveIt.textContent = 'give it';
-  const betterHome = el('div', `font-family:var(--serif);font-size:clamp(44px,7.5vw,100px);line-height:1.05;color:var(--teal);opacity:0`);
-  betterHome.textContent = 'a better home.';
+  const give = el('div',
+    'font-family:var(--serif);font-size:clamp(44px,7.5vw,100px);line-height:1.05;color:var(--dark)');
+  give.textContent = 'give it';
+  const home = el('div',
+    'font-family:var(--serif);font-size:clamp(44px,7.5vw,100px);line-height:1.05;color:var(--teal)');
+  home.textContent = 'a better home.';
 
-  const sub = el('div', `font-family:var(--sans);font-size:clamp(12px,1.5vw,16px);color:#bbb;opacity:0;margin-top:clamp(8px,1.5vh,16px);letter-spacing:.06em`);
-  sub.textContent = 'social → search  ·  your content deserves a longer life';
+  const foot = el('div',
+    'font-family:var(--sans);font-size:clamp(12px,1.5vw,16px);color:#bbb;margin-top:clamp(8px,1.5vh,16px);letter-spacing:.06em');
+  foot.textContent = 'social → search  ·  your content deserves a longer life';
 
-  root.append(postLine, ideaLine, giveIt, betterHome, sub);
+  root.append(postLine, ideaLine, give, home, foot);
 
   return {
     play() {
-      anim(postLine, 'fadeUp', { dur: '.5s', delay: 0 });
-      after(600, () => { postStrike.style.transform = 'scaleX(1)'; });
-      after(1200, () => anim(ideaLine, 'flyUp', { dur: '.65s' }));
-      after(1900, () => anim(giveIt, 'slam', { dur: '.7s' }));
-      after(2200, () => anim(betterHome, 'slam', { dur: '.75s' }));
-      after(3000, () => anim(sub, 'fadeIn', { dur: '.6s' }));
+      pflyDown(postLine); pflyDown(ideaLine); pslam(give); pslam(home); pflyDown(foot);
+      bar.style.animation = 'none'; bar.style.transform = 'scaleX(0)';
+
+      show(postLine, 0);
+      tick(() => { bar.style.animation = 'strikeDraw .55s ease forwards'; }, 700);
+      show(ideaLine, 1300);
+      show(give,     2100, TR_SLAM);
+      show(home,     2380, TR_SLAM);
+      showFade(foot, 3200);
     },
     reset() {
-      [postLine, ideaLine, giveIt, betterHome, sub].forEach(e => { e.style.animation = 'none'; e.style.opacity = '0'; });
-      postStrike.style.transform = 'scaleX(0)';
+      hideAll(postLine, ideaLine, give, home, foot);
+      bar.style.animation = 'none'; bar.style.transform = 'scaleX(0)';
     }
   };
 }
@@ -865,63 +889,28 @@ function buildS12() {
 /* ═══════════════════════════════════════════
    SCENE MANAGEMENT
 ═══════════════════════════════════════════ */
-const sceneDefs = [
-  buildS1, buildS2, buildS3, buildS4, buildS5, buildS6,
-  buildS7, buildS8, buildS9, buildS10, buildS11, buildS12
-];
-
-const sceneControllers = sceneDefs.map((fn, i) => {
-  const ctrl = fn();
-  ctrl.el = document.getElementById(`s${i + 1}`);
-  return ctrl;
-});
-
-const TITLES = [
-  '01 · content expires',
-  '02 · half-life comparison',
-  '03 · feed the machine',
-  '04 · your time cost',
-  '05 · 2 years',
-  '06 · content compounds',
-  '07 · rented land',
-  '08 · google finds you',
-  '09 · ai recommends you',
-  '10 · yours',
-  '11 · social → search',
-  '12 · the idea lives',
-];
+const builders = [buildS1, buildS2, buildS3, buildS4, buildS5, buildS6, buildS7, buildS8, buildS9, buildS10, buildS11, buildS12];
+const ctrls    = builders.map((fn, i) => { const c = fn(); c.el = document.getElementById(`s${i+1}`); return c; });
 
 let current = 0;
 
 function goTo(idx) {
-  if (idx < 0 || idx >= sceneControllers.length) return;
+  if (idx < 0 || idx >= ctrls.length) return;
   clearAll();
-
-  sceneControllers[current].el.classList.remove('active');
-  sceneControllers[current].reset();
-
+  ctrls[current].el.classList.remove('active');
+  ctrls[current].reset();
   current = idx;
-  sceneControllers[current].el.classList.add('active');
-
-  // tiny delay so reset + transition don't fight
-  setTimeout(() => sceneControllers[current].play(), 50);
-
-  document.getElementById('nav').textContent = `${idx + 1} / ${sceneControllers.length}`;
-}
-
-function replay() {
-  clearAll();
-  sceneControllers[current].reset();
-  setTimeout(() => sceneControllers[current].play(), 50);
+  ctrls[current].el.classList.add('active');
+  setTimeout(() => ctrls[current].play(), 40);
+  document.getElementById('nav').textContent = `${idx + 1} / ${ctrls.length}`;
 }
 
 document.addEventListener('keydown', e => {
-  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); goTo(current + 1); }
-  else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); goTo(current - 1); }
-  else if (e.key === 'r' || e.key === 'R') { e.preventDefault(); replay(); }
+  if      (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); goTo(current + 1); }
+  else if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   { e.preventDefault(); goTo(current - 1); }
+  else if (e.key === 'r' || e.key === 'R')                  { e.preventDefault(); clearAll(); ctrls[current].reset(); setTimeout(() => ctrls[current].play(), 40); }
 });
 
-// Start
 goTo(0);
 </script>
 </body>
