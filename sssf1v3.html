@@ -1,0 +1,980 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Social → Search Sync · B-Roll Suite v3</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #f7fffe;
+  --teal: #2abf9a;
+  --tl: #6ef2d2;
+  --rose: #c89a97;
+  --dark: #111;
+  --serif: 'Instrument Serif', serif;
+  --sans: 'DM Sans', sans-serif;
+}
+html, body {
+  width: 100vw; height: 100vh; overflow: hidden;
+  background: var(--bg);
+  font-family: var(--sans); color: var(--dark);
+  user-select: none; cursor: default;
+}
+.scene {
+  position: fixed; inset: 0;
+  display: flex; align-items: center; justify-content: center; flex-direction: column;
+  opacity: 0; pointer-events: none;
+  transition: opacity .3s ease;
+}
+.scene.active { opacity: 1; pointer-events: all; }
+
+@keyframes shakeIt {
+  0%,100% { transform: translateX(0) rotate(0); }
+  18%  { transform: translateX(-9px) rotate(-.6deg); }
+  36%  { transform: translateX(9px)  rotate(.6deg); }
+  54%  { transform: translateX(-6px) rotate(-.3deg); }
+  72%  { transform: translateX(6px)  rotate(.3deg); }
+  88%  { transform: translateX(-3px); }
+}
+@keyframes strikeDraw {
+  from { transform: scaleX(0); transform-origin: left; }
+  to   { transform: scaleX(1); transform-origin: left; }
+}
+@keyframes arrowPulse {
+  0%,100% { transform: translateX(0); }
+  50%     { transform: translateX(12px); }
+}
+@keyframes cursor {
+  0%,100% { border-right-color: var(--dark); }
+  50%     { border-right-color: transparent; }
+}
+@keyframes popIn {
+  0%   { opacity: 0; transform: scale(0.4) rotate(-8deg); }
+  60%  { transform: scale(1.08) rotate(2deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0); }
+}
+
+#nav {
+  position: fixed; bottom: 22px; right: 28px;
+  font-family: var(--sans); font-size: 11px; font-weight: 500;
+  color: #ccc; letter-spacing: .1em; z-index: 9999;
+}
+</style>
+</head>
+<body>
+
+<div class="scene" id="s1"></div>
+<div class="scene" id="s2"></div>
+<div class="scene" id="s3"></div>
+<div class="scene" id="s4"></div>
+<div class="scene" id="s5"></div>
+<div class="scene" id="s6"></div>
+<div class="scene" id="s7"></div>
+<div class="scene" id="s8"></div>
+<div class="scene" id="s9"></div>
+<div class="scene" id="s10"></div>
+<div class="scene" id="s11"></div>
+<div class="scene" id="s12"></div>
+<div id="nav"></div>
+
+<script>
+/* ═══════════════════════════════════════════
+   ANIMATION ENGINE
+═══════════════════════════════════════════ */
+const TR      = 'opacity .55s cubic-bezier(.22,1,.36,1),transform .55s cubic-bezier(.22,1,.36,1)';
+const TR_SLAM = 'transform .65s cubic-bezier(.34,1.4,.64,1),opacity .38s ease';
+const TR_SLOW = 'opacity .8s cubic-bezier(.22,1,.36,1),transform .8s cubic-bezier(.22,1,.36,1)';
+const TR_FADE = 'opacity .55s ease';
+
+let timers = [], rafs = [];
+function tick(fn, ms) { const id = setTimeout(fn, ms); timers.push(id); }
+function clearAll() { timers.forEach(clearTimeout); rafs.forEach(cancelAnimationFrame); timers = []; rafs = []; }
+function reflow(el) { void el.offsetHeight; }
+
+function pflyUp(el)    { el.style.cssText += ';transition:none;opacity:0;transform:translateY(32px)'; }
+function pflyDown(el)  { el.style.cssText += ';transition:none;opacity:0;transform:translateY(-32px)'; }
+function pflyRight(el) { el.style.cssText += ';transition:none;opacity:0;transform:translateX(-65px)'; }
+function pflyLeft(el)  { el.style.cssText += ';transition:none;opacity:0;transform:translateX(65px)'; }
+function pslam(el)     { el.style.cssText += ';transition:none;opacity:0;transform:scale(2.4) translateY(-12px)'; }
+function pfade(el)     { el.style.cssText += ';transition:none;opacity:0'; }
+
+function show(el, delay, tr) {
+  tick(() => {
+    el.style.transition = tr || TR;
+    reflow(el);
+    el.style.opacity = '1';
+    el.style.transform = 'none';
+  }, delay);
+}
+function showFade(el, delay) {
+  tick(() => {
+    el.style.transition = TR_FADE;
+    reflow(el);
+    el.style.opacity = '1';
+  }, delay);
+}
+function hide(el) { el.style.transition = 'none'; el.style.opacity = '0'; }
+function hideAll(...els) { els.forEach(hide); }
+
+function wordSpans(text, stagger, baseDelay) {
+  stagger = stagger || 80; baseDelay = baseDelay || 0;
+  return text.split(' ').map((word, i) => {
+    const s = document.createElement('span');
+    s.textContent = word;
+    s.style.display = 'inline-block';
+    s.style.marginRight = '0.28em';
+    s.style.opacity = '0';
+    s.style.transform = 'translateY(28px)';
+    const d = baseDelay + i * stagger;
+    s.style.transition = `opacity .5s cubic-bezier(.22,1,.36,1) ${d}ms,transform .5s cubic-bezier(.22,1,.36,1) ${d}ms`;
+    s._tr = s.style.transition;
+    return s;
+  });
+}
+function showWords(spans, parent) {
+  spans.forEach(s => { s.style.transition = s._tr; });
+  reflow(parent || spans[0].parentNode);
+  spans.forEach(s => { s.style.opacity = '1'; s.style.transform = 'none'; });
+}
+function hideWords(spans) {
+  spans.forEach(s => { s.style.transition = 'none'; s.style.opacity = '0'; s.style.transform = 'translateY(28px)'; });
+}
+
+function countTo(el, from, to, duration, decimals, onDone) {
+  const start = performance.now();
+  const ease  = t => 1 - Math.pow(1 - t, 3);
+  const step  = now => {
+    const p = Math.min((now - start) / duration, 1);
+    el.textContent = (from + (to - from) * ease(p)).toFixed(decimals || 0);
+    if (p < 1) { const id = requestAnimationFrame(step); rafs.push(id); }
+    else if (onDone) onDone();
+  };
+  rafs.push(requestAnimationFrame(step));
+}
+
+function el(tag, css, html) {
+  const e = document.createElement(tag);
+  if (css)  e.style.cssText = css;
+  if (html) e.innerHTML = html;
+  return e;
+}
+
+/* ═══════════════════════════════════════════
+   SCENES
+═══════════════════════════════════════════ */
+
+/* ─── S1: One extra step ─── */
+function buildS1() {
+  const root = document.getElementById('s1');
+  root.style.cssText = 'align-items:center;justify-content:center;text-align:center;padding:clamp(40px,6vw,80px)';
+
+  const workflow = el('div',
+    'font-family:var(--sans);font-size:clamp(12px,1.8vw,17px);font-weight:500;letter-spacing:.18em;' +
+    'text-transform:uppercase;color:#aaa;margin-bottom:clamp(10px,2vh,20px)');
+  workflow.textContent = 'your repurposing workflow';
+
+  const plus = el('div',
+    'font-family:var(--serif);font-size:clamp(60px,11vw,150px);line-height:1;color:var(--teal)');
+  plus.textContent = '+';
+
+  const one = el('div',
+    'font-family:var(--serif);font-size:clamp(52px,9.5vw,130px);line-height:.95;color:var(--dark)');
+  one.textContent = 'ONE extra step';
+
+  const divider = el('div', 'width:min(280px,50vw);height:2px;background:#eee;margin:clamp(16px,3vh,32px) 0');
+
+  const before = el('div',
+    'font-family:var(--sans);font-size:clamp(13px,1.8vw,20px);color:var(--rose);font-weight:600;' +
+    'position:relative;display:inline-block;margin-bottom:clamp(6px,1vh,12px)');
+  before.textContent = '48 hours';
+  const beforeBar = el('div',
+    'position:absolute;left:-2px;top:50%;width:calc(100%+4px);height:2.5px;background:var(--rose);' +
+    'transform:scaleX(0);transform-origin:left');
+  before.appendChild(beforeBar);
+
+  const after = el('div',
+    'font-family:var(--serif);font-size:clamp(36px,6.5vw,88px);line-height:1;color:var(--teal)');
+  after.textContent = 'YEARS';
+
+  root.append(workflow, plus, one, divider, before, after);
+
+  return {
+    play() {
+      pflyDown(workflow); pslam(plus); pslam(one); pfade(divider); pfade(before); pslam(after);
+      beforeBar.style.animation = 'none'; beforeBar.style.transform = 'scaleX(0)';
+
+      show(workflow, 0);
+      show(plus,     280, TR_SLAM);
+      show(one,      500, TR_SLAM);
+      showFade(divider, 1100);
+      showFade(before, 1400);
+      tick(() => { beforeBar.style.animation = 'strikeDraw .5s ease forwards'; }, 1900);
+      show(after, 2200, TR_SLAM);
+    },
+    reset() {
+      hideAll(workflow, plus, one, divider, before, after);
+      beforeBar.style.animation = 'none'; beforeBar.style.transform = 'scaleX(0)';
+    }
+  };
+}
+
+/* ─── S2: The content pyramid ─── */
+function buildS2() {
+  const root = document.getElementById('s2');
+  root.style.cssText = 'align-items:center;justify-content:center;padding:clamp(40px,6vw,80px);gap:0';
+
+  const title = el('div',
+    'font-family:var(--sans);font-size:clamp(11px,1.5vw,14px);font-weight:600;letter-spacing:.18em;' +
+    'text-transform:uppercase;color:#aaa;margin-bottom:clamp(16px,3vh,32px)');
+  title.textContent = 'the ideal content strategy';
+
+  // Pyramid tiers (top to bottom = long form to short)
+  const tiers = [
+    { label: 'YouTube · Podcast · Blog Post', sub: 'long-form first', w: '44%', bg: 'var(--teal)', textCol: 'white', bold: true },
+    { label: 'Short clips · Carousels · Quotes', sub: '', w: '66%', bg: 'rgba(42,191,154,.25)', textCol: 'var(--dark)', bold: false },
+    { label: 'Captions · Threads · Stories · Reels', sub: '', w: '88%', bg: 'rgba(42,191,154,.12)', textCol: 'var(--dark)', bold: false },
+  ];
+
+  const tierEls = tiers.map(t => {
+    const row = el('div',
+      `display:flex;align-items:center;justify-content:center;` +
+      `width:${t.w};max-width:640px;padding:clamp(10px,1.8vh,18px) clamp(12px,2vw,20px);` +
+      `background:${t.bg};border-radius:6px;margin-bottom:3px;` +
+      `font-family:var(--sans);font-size:clamp(11px,1.5vw,15px);font-weight:${t.bold ? 700 : 500};` +
+      `color:${t.textCol};text-align:center;line-height:1.3`);
+    row.textContent = t.label;
+    return row;
+  });
+
+  const arrowDown = el('div',
+    'font-family:var(--serif);font-size:clamp(28px,5vw,60px);color:var(--teal);' +
+    'margin:clamp(10px,2vh,20px) 0;line-height:1');
+  arrowDown.textContent = '↓';
+
+  const tagline = el('div',
+    'font-family:var(--serif);font-size:clamp(20px,3.5vw,46px);font-style:italic;color:var(--dark);' +
+    'margin-top:clamp(14px,2.5vh,28px)');
+  tagline.textContent = 'start big. repurpose small.';
+
+  const one = el('div',
+    'font-family:var(--sans);font-size:clamp(13px,1.8vw,20px);color:#888;margin-top:clamp(8px,1.5vh,16px)');
+  one.textContent = 'one piece of content becomes twenty';
+
+  root.append(title, ...tierEls, arrowDown, tagline, one);
+
+  return {
+    play() {
+      pflyDown(title);
+      tierEls.forEach(t => pflyRight(t));
+      pfade(arrowDown); pflyUp(tagline); pflyUp(one);
+
+      show(title, 0);
+      tierEls.forEach((t, i) => show(t, 300 + i * 300));
+      tick(() => {
+        arrowDown.style.transition = TR_FADE;
+        reflow(arrowDown);
+        arrowDown.style.opacity = '1';
+        arrowDown.style.animation = 'arrowPulse 1.5s ease-in-out infinite';
+      }, 1400);
+      show(tagline, 1700);
+      show(one, 2300);
+    },
+    reset() {
+      hideAll(title, arrowDown, tagline, one);
+      arrowDown.style.animation = '';
+      tierEls.forEach(t => hide(t));
+    }
+  };
+}
+
+/* ─── S3: Meet you where you are ─── */
+function buildS3() {
+  const root = document.getElementById('s3');
+  root.style.cssText = 'align-items:center;justify-content:center;text-align:center;padding:clamp(40px,6vw,80px)';
+
+  const reality = el('div',
+    'font-family:var(--sans);font-size:clamp(12px,1.8vw,17px);font-weight:500;letter-spacing:.18em;' +
+    'text-transform:uppercase;color:#aaa;margin-bottom:clamp(10px,2vh,20px)');
+  reality.textContent = 'the reality for most business owners';
+
+  const youHave = el('div',
+    'font-family:var(--serif);font-size:clamp(44px,8vw,108px);line-height:.95;color:var(--dark);' +
+    'margin-bottom:clamp(6px,1vh,12px)');
+  youHave.textContent = 'you already have';
+
+  const platRow = el('div', 'display:flex;gap:clamp(12px,2.5vw,36px);justify-content:center;flex-wrap:wrap;margin-bottom:clamp(14px,2.5vh,28px)');
+  ['Instagram', 'TikTok', 'LinkedIn'].forEach(name => {
+    const p = el('div',
+      'font-family:var(--sans);font-size:clamp(14px,2.2vw,26px);font-weight:700;' +
+      'color:var(--teal);letter-spacing:-.01em');
+    p.textContent = name;
+    platRow.appendChild(p);
+    pflyUp(p);
+    p._isPlat = true;
+  });
+  const platEls = Array.from(platRow.children);
+
+  const archive = el('div',
+    'font-family:var(--serif);font-size:clamp(22px,4vw,52px);font-style:italic;color:var(--dark);' +
+    'margin-bottom:clamp(14px,2.5vh,28px)');
+  archive.textContent = 'a whole archive of content.';
+
+  const longform = el('div',
+    'font-family:var(--sans);font-size:clamp(13px,1.8vw,20px);color:#aaa;max-width:480px;line-height:1.6;font-style:italic');
+  longform.textContent = 'the long-form strategy is something you\'ll get to... eventually.';
+
+  const plan = el('div',
+    'font-family:var(--serif);font-size:clamp(20px,3.5vw,48px);color:var(--teal);' +
+    'margin-top:clamp(14px,2.5vh,28px)');
+  plan.textContent = "so let's use what you already have.";
+
+  root.append(reality, youHave, platRow, archive, longform, plan);
+
+  return {
+    play() {
+      pflyDown(reality); pslam(youHave); pflyUp(archive); pflyUp(longform); pflyUp(plan);
+      platEls.forEach(p => pflyUp(p));
+
+      show(reality, 0);
+      show(youHave, 280, TR_SLAM);
+      platEls.forEach((p, i) => show(p, 800 + i * 220, TR_SLAM));
+      show(archive, 1600);
+      show(longform, 2300);
+      show(plan, 3100);
+    },
+    reset() {
+      hideAll(reality, youHave, archive, longform, plan);
+      platEls.forEach(p => hide(p));
+    }
+  };
+}
+
+/* ─── S4: Social → Search Sync ─── */
+function buildS4() {
+  const root = document.getElementById('s4');
+  root.style.cssText = 'align-items:center;justify-content:center;text-align:center;padding:clamp(40px,6vw,80px)';
+
+  const intro = el('div',
+    'font-family:var(--sans);font-size:clamp(12px,1.8vw,17px);font-weight:500;letter-spacing:.18em;' +
+    'text-transform:uppercase;color:#aaa;margin-bottom:clamp(10px,2vh,20px)');
+  intro.textContent = 'introducing';
+
+  const name = el('div',
+    'font-family:var(--serif);font-size:clamp(44px,8vw,110px);line-height:.95;color:var(--dark)');
+  name.textContent = 'Social → Search';
+
+  const sync = el('div',
+    'font-family:var(--serif);font-size:clamp(44px,8vw,110px);line-height:.95;color:var(--teal);' +
+    'margin-bottom:clamp(16px,3vh,32px)');
+  sync.textContent = 'Sync';
+
+  const desc = el('div', 'display:flex;flex-direction:column;gap:clamp(8px,1.5vh,16px);align-items:center');
+  const checks = [
+    "you already have the content",
+    "you already have the website",
+    "we're just finally connecting the two",
+  ];
+  const checkEls = checks.map((text, i) => {
+    const row = el('div', 'display:flex;align-items:center;gap:clamp(10px,2vw,18px)');
+    const dot = el('div',
+      `width:clamp(8px,1.2vw,14px);height:clamp(8px,1.2vw,14px);border-radius:50%;` +
+      `background:${i === 2 ? 'var(--teal)' : 'var(--teal)'};flex-shrink:0`);
+    const lbl = el('div',
+      `font-family:var(--sans);font-size:clamp(14px,2vw,24px);font-weight:${i === 2 ? 700 : 400};` +
+      `color:${i === 2 ? 'var(--teal)' : '#666'}`);
+    lbl.textContent = text;
+    row.append(dot, lbl);
+    desc.appendChild(row);
+    return row;
+  });
+
+  root.append(intro, name, sync, desc);
+
+  return {
+    play() {
+      pflyDown(intro); pslam(name); pslam(sync);
+      checkEls.forEach(r => pflyRight(r));
+
+      show(intro, 0);
+      show(name,  280, TR_SLAM);
+      show(sync,  480, TR_SLAM);
+      checkEls.forEach((r, i) => show(r, 1200 + i * 350));
+    },
+    reset() {
+      hideAll(intro, name, sync);
+      checkEls.forEach(r => hide(r));
+    }
+  };
+}
+
+/* ─── S5: Myth 1 — SEO is too technical ─── */
+function buildS5() {
+  const root = document.getElementById('s5');
+  root.style.cssText = 'align-items:center;justify-content:center;text-align:center;padding:clamp(40px,6vw,80px)';
+
+  const mythNum = el('div',
+    'font-family:var(--sans);font-size:clamp(11px,1.5vw,14px);font-weight:600;letter-spacing:.18em;' +
+    'text-transform:uppercase;color:#aaa;margin-bottom:clamp(8px,1.5vh,16px)');
+  mythNum.textContent = 'myth #1';
+
+  const mythText = el('div',
+    'font-family:var(--serif);font-size:clamp(40px,7.5vw,100px);line-height:.95;color:var(--rose);' +
+    'position:relative;display:inline-block;margin-bottom:clamp(16px,3vh,36px)');
+  mythText.textContent = '"SEO is too technical"';
+  const mythBar = el('div',
+    'position:absolute;left:-4px;top:50%;width:calc(100%+8px);height:4px;background:var(--rose);' +
+    'transform:scaleX(0);transform-origin:left');
+  mythText.appendChild(mythBar);
+
+  const busted = el('div',
+    'font-family:var(--sans);font-size:clamp(18px,3.5vw,48px);font-weight:700;color:var(--teal);' +
+    'letter-spacing:.08em;text-transform:uppercase;margin-bottom:clamp(16px,3vh,36px)');
+  busted.textContent = 'BUSTED';
+
+  const real = el('div',
+    'font-family:var(--sans);font-size:clamp(14px,2vw,22px);color:#555;max-width:560px;line-height:1.65');
+  const realSpans = wordSpans('all you need: what is your ideal client searching for — and how to use that phrase in the right places.', 65, 0);
+  realSpans.forEach(s => real.appendChild(s));
+
+  const notNerd = el('div',
+    'font-family:var(--serif);font-size:clamp(20px,3.5vw,46px);font-style:italic;color:var(--teal);' +
+    'margin-top:clamp(14px,2.5vh,28px)');
+  notNerd.textContent = "you don't need to go full nerd.";
+
+  root.append(mythNum, mythText, busted, real, notNerd);
+
+  return {
+    play() {
+      pflyDown(mythNum); pslam(mythText); pslam(busted);
+      hideWords(realSpans); pflyUp(notNerd);
+      mythBar.style.animation = 'none'; mythBar.style.transform = 'scaleX(0)';
+
+      show(mythNum, 0);
+      showFade(mythText, 280);
+      tick(() => { mythBar.style.animation = 'strikeDraw .55s ease forwards'; }, 900);
+      show(busted, 1400, TR_SLAM);
+      tick(() => showWords(realSpans, real), 2100);
+      show(notNerd, 2100 + realSpans.length * 65 + 400);
+    },
+    reset() {
+      hideAll(mythNum, mythText, busted, notNerd);
+      hideWords(realSpans);
+      mythBar.style.animation = 'none'; mythBar.style.transform = 'scaleX(0)';
+    }
+  };
+}
+
+/* ─── S6: Myth 2 — posting treadmill ─── */
+function buildS6() {
+  const root = document.getElementById('s6');
+  root.style.cssText = 'align-items:center;justify-content:center;text-align:center;padding:clamp(40px,6vw,80px)';
+
+  const mythNum = el('div',
+    'font-family:var(--sans);font-size:clamp(11px,1.5vw,14px);font-weight:600;letter-spacing:.18em;' +
+    'text-transform:uppercase;color:#aaa;margin-bottom:clamp(8px,1.5vh,16px)');
+  mythNum.textContent = 'myth #2';
+
+  const mythText = el('div',
+    'font-family:var(--serif);font-size:clamp(34px,6.5vw,86px);line-height:1;color:var(--rose);' +
+    'position:relative;display:inline-block;margin-bottom:clamp(16px,3vh,36px)');
+  mythText.textContent = '"you have to post constantly"';
+  const mythBar = el('div',
+    'position:absolute;left:-4px;top:50%;width:calc(100%+8px);height:4px;background:var(--rose);' +
+    'transform:scaleX(0);transform-origin:left');
+  mythText.appendChild(mythBar);
+
+  const busted = el('div',
+    'font-family:var(--sans);font-size:clamp(18px,3.5vw,48px);font-weight:700;color:var(--teal);' +
+    'letter-spacing:.08em;text-transform:uppercase;margin-bottom:clamp(16px,3vh,36px)');
+  busted.textContent = 'BUSTED';
+
+  const real = el('div',
+    'font-family:var(--serif);font-size:clamp(22px,4vw,52px);font-style:italic;color:var(--dark);' +
+    'max-width:640px;line-height:1.3;margin-bottom:clamp(10px,2vh,20px)');
+  real.textContent = 'one post published today';
+
+  const duration = el('div',
+    'font-family:var(--serif);font-size:clamp(36px,6.5vw,88px);line-height:.95;color:var(--teal)');
+  duration.textContent = 'still bringing leads in 2 years';
+
+  const notTread = el('div',
+    'font-family:var(--sans);font-size:clamp(13px,1.8vw,20px);font-weight:600;color:#888;' +
+    'margin-top:clamp(10px,2vh,20px);letter-spacing:.04em');
+  notTread.textContent = 'you are not on a posting treadmill';
+
+  root.append(mythNum, mythText, busted, real, duration, notTread);
+
+  return {
+    play() {
+      pflyDown(mythNum); pfade(mythText); pslam(busted);
+      pflyUp(real); pslam(duration); pflyUp(notTread);
+      mythBar.style.animation = 'none'; mythBar.style.transform = 'scaleX(0)';
+
+      show(mythNum, 0);
+      showFade(mythText, 280);
+      tick(() => { mythBar.style.animation = 'strikeDraw .55s ease forwards'; }, 900);
+      show(busted, 1400, TR_SLAM);
+      show(real, 2100);
+      show(duration, 2600, TR_SLAM);
+      show(notTread, 3300);
+    },
+    reset() {
+      hideAll(mythNum, mythText, busted, real, duration, notTread);
+      mythBar.style.animation = 'none'; mythBar.style.transform = 'scaleX(0)';
+    }
+  };
+}
+
+/* ─── S7: Myth 3 — not a writer ─── */
+function buildS7() {
+  const root = document.getElementById('s7');
+  root.style.cssText = 'align-items:center;justify-content:center;text-align:center;padding:clamp(40px,6vw,80px)';
+
+  const mythNum = el('div',
+    'font-family:var(--sans);font-size:clamp(11px,1.5vw,14px);font-weight:600;letter-spacing:.18em;' +
+    'text-transform:uppercase;color:#aaa;margin-bottom:clamp(8px,1.5vh,16px)');
+  mythNum.textContent = 'myth #3';
+
+  const mythText = el('div',
+    'font-family:var(--serif);font-size:clamp(40px,7.5vw,100px);line-height:.95;color:var(--rose);' +
+    'position:relative;display:inline-block;margin-bottom:clamp(16px,3vh,36px)');
+  mythText.textContent = '"I\'m not a writer"';
+  const mythBar = el('div',
+    'position:absolute;left:-4px;top:50%;width:calc(100%+8px);height:4px;background:var(--rose);' +
+    'transform:scaleX(0);transform-origin:left');
+  mythText.appendChild(mythBar);
+
+  const busted = el('div',
+    'font-family:var(--sans);font-size:clamp(18px,3.5vw,48px);font-weight:700;color:var(--teal);' +
+    'letter-spacing:.08em;text-transform:uppercase;margin-bottom:clamp(14px,2.5vh,28px)');
+  busted.textContent = 'BUSTED';
+
+  const shortcuts = el('div', 'display:flex;gap:clamp(12px,2.5vw,32px);justify-content:center;flex-wrap:wrap');
+  [
+    { icon: '🤖', label: 'Use AI', sub: 'with a real workflow' },
+    { icon: '🤝', label: 'Outsource it', sub: "easier than social — it's just text" },
+  ].forEach(({ icon, label, sub }) => {
+    const card = el('div',
+      'background:white;border-radius:14px;padding:clamp(14px,2.5vh,22px) clamp(16px,2.5vw,26px);' +
+      'box-shadow:0 4px 20px rgba(0,0,0,.06);text-align:center;min-width:clamp(130px,18vw,200px)');
+    const ic = el('div', 'font-size:clamp(28px,4vw,48px);margin-bottom:8px');
+    ic.textContent = icon;
+    const lb = el('div', 'font-family:var(--sans);font-size:clamp(15px,2.2vw,24px);font-weight:700;color:var(--teal);margin-bottom:4px');
+    lb.textContent = label;
+    const sb = el('div', 'font-family:var(--sans);font-size:clamp(10px,1.3vw,14px);color:#aaa;line-height:1.4');
+    sb.textContent = sub;
+    card.append(ic, lb, sb);
+    shortcuts.appendChild(card);
+    pflyUp(card);
+  });
+  const cardEls = Array.from(shortcuts.children);
+
+  const skill = el('div',
+    'font-family:var(--serif);font-size:clamp(18px,3vw,42px);font-style:italic;color:var(--dark);' +
+    'margin-top:clamp(14px,2.5vh,28px)');
+  skill.textContent = "blogging is a skill. you've learned harder things.";
+
+  root.append(mythNum, mythText, busted, shortcuts, skill);
+
+  return {
+    play() {
+      pflyDown(mythNum); pfade(mythText); pslam(busted);
+      cardEls.forEach(c => pflyUp(c));
+      pflyUp(skill);
+      mythBar.style.animation = 'none'; mythBar.style.transform = 'scaleX(0)';
+
+      show(mythNum, 0);
+      showFade(mythText, 280);
+      tick(() => { mythBar.style.animation = 'strikeDraw .55s ease forwards'; }, 900);
+      show(busted, 1400, TR_SLAM);
+      cardEls.forEach((c, i) => show(c, 2100 + i * 300));
+      show(skill, 2900);
+    },
+    reset() {
+      hideAll(mythNum, mythText, busted, skill);
+      cardEls.forEach(c => hide(c));
+      mythBar.style.animation = 'none'; mythBar.style.transform = 'scaleX(0)';
+    }
+  };
+}
+
+/* ─── S8: The slapping strategy ─── */
+function buildS8() {
+  const root = document.getElementById('s8');
+  root.style.cssText = 'align-items:center;justify-content:center;text-align:center;padding:clamp(40px,6vw,80px)';
+
+  const label = el('div',
+    'font-family:var(--sans);font-size:clamp(11px,1.5vw,14px);font-weight:600;letter-spacing:.18em;' +
+    'text-transform:uppercase;color:#aaa;margin-bottom:clamp(8px,1.5vh,16px)');
+  label.textContent = 'what NOT to do';
+
+  const title = el('div',
+    'font-family:var(--serif);font-size:clamp(52px,9.5vw,130px);line-height:.92;color:var(--rose)');
+  title.textContent = 'The Slapping';
+
+  const title2 = el('div',
+    'font-family:var(--serif);font-size:clamp(52px,9.5vw,130px);line-height:.92;color:var(--dark);' +
+    'margin-bottom:clamp(16px,3vh,36px)');
+  title2.textContent = 'Strategy';
+
+  // Steps with X marks
+  const steps = el('div', 'display:flex;align-items:center;gap:clamp(8px,1.5vw,16px);flex-wrap:wrap;justify-content:center;margin-bottom:clamp(14px,2.5vh,28px)');
+  const STEPS = [
+    { label: 'copy caption', x: false },
+    { label: '→', x: false, arrow: true },
+    { label: 'paste to site', x: false },
+    { label: '→', x: false, arrow: true },
+    { label: 'publish', x: false },
+    { label: '→', x: false, arrow: true },
+    { label: '🦗 nothing', x: true },
+  ];
+  const stepEls = STEPS.map(({ label: sLabel, arrow, x }) => {
+    if (arrow) {
+      const a = el('div', 'font-family:var(--sans);font-size:clamp(14px,2vw,20px);color:#ccc;font-weight:700');
+      a.textContent = '→';
+      steps.appendChild(a);
+      return a;
+    }
+    const s = el('div',
+      `font-family:var(--sans);font-size:clamp(12px,1.8vw,18px);font-weight:600;` +
+      `color:${x ? 'var(--rose)' : '#666'};padding:6px 12px;border-radius:8px;` +
+      `background:${x ? 'rgba(200,154,151,.1)' : 'white'};border:${x ? '2px solid var(--rose)' : '2px solid #eee'}`);
+    s.textContent = sLabel;
+    steps.appendChild(s);
+    return s;
+  });
+
+  const warning = el('div',
+    'font-family:var(--sans);font-size:clamp(13px,1.8vw,20px);color:#888;max-width:520px;line-height:1.6');
+  warning.textContent = 'Google does not want recycled social captions. Google wants content that genuinely answers the question.';
+
+  root.append(label, title, title2, steps, warning);
+
+  return {
+    play() {
+      pflyDown(label); pslam(title); pslam(title2);
+      stepEls.forEach(s => pflyUp(s));
+      pflyUp(warning);
+
+      show(label, 0);
+      show(title,  280, TR_SLAM);
+      show(title2, 460, TR_SLAM);
+      stepEls.forEach((s, i) => show(s, 1200 + i * 120));
+      show(warning, 1200 + stepEls.length * 120 + 400);
+    },
+    reset() {
+      hideAll(label, title, title2, warning);
+      stepEls.forEach(s => hide(s));
+    }
+  };
+}
+
+/* ─── S9: Slapping vs Social → Search Sync ─── */
+function buildS9() {
+  const root = document.getElementById('s9');
+  root.style.cssText = 'align-items:center;justify-content:center;padding:clamp(30px,5vw,60px);gap:clamp(16px,3vh,28px)';
+
+  const title = el('div',
+    'font-family:var(--sans);font-size:clamp(11px,1.5vw,14px);font-weight:600;letter-spacing:.18em;' +
+    'text-transform:uppercase;color:#aaa');
+  title.textContent = 'same starting point. completely different outcome.';
+
+  const cols = el('div', 'display:flex;gap:clamp(12px,3vw,40px);align-items:flex-start;width:100%;max-width:900px');
+
+  const makeCol = (heading, hCol, steps, resultTxt, resultCol) => {
+    const col = el('div', 'flex:1;display:flex;flex-direction:column;gap:clamp(8px,1.5vh,14px)');
+    const hdr = el('div',
+      `font-family:var(--sans);font-size:clamp(12px,1.6vw,16px);font-weight:700;letter-spacing:.1em;` +
+      `text-transform:uppercase;color:${hCol};margin-bottom:4px`);
+    hdr.textContent = heading;
+    col.appendChild(hdr);
+    steps.forEach(s => {
+      const row = el('div',
+        `font-family:var(--sans);font-size:clamp(11px,1.5vw,15px);color:#666;padding:clamp(7px,1.2vh,12px) clamp(10px,1.5vw,16px);` +
+        `background:white;border-radius:8px;border-left:3px solid ${hCol};line-height:1.4`);
+      row.textContent = s;
+      col.appendChild(row);
+    });
+    const result = el('div',
+      `font-family:var(--serif);font-size:clamp(15px,2.2vw,26px);font-style:italic;color:${resultCol};margin-top:6px`);
+    result.textContent = resultTxt;
+    col.appendChild(result);
+    return { col, hdr };
+  };
+
+  const left = makeCol(
+    '❌  slapping',
+    'var(--rose)',
+    ['copy caption', 'paste to website', 'publish', 'hope something happens'],
+    '→ nothing.'
+  );
+  const right = makeCol(
+    '✓  social → search sync',
+    'var(--teal)',
+    ['find the topic + keyword', 'expand into a full article', 'optimize for Google', 'publish'],
+    '→ leads for years.'
+  );
+
+  cols.append(left.col, right.col);
+  root.append(title, cols);
+
+  return {
+    play() {
+      pflyDown(title); pflyRight(left.col); pflyLeft(right.col);
+      show(title, 0);
+      show(left.col, 400);
+      show(right.col, 700);
+    },
+    reset() { hideAll(title, left.col, right.col); }
+  };
+}
+
+/* ─── S10: Your content already has it ─── */
+function buildS10() {
+  const root = document.getElementById('s10');
+  root.style.cssText = 'align-items:center;justify-content:center;text-align:center;padding:clamp(40px,6vw,80px)';
+
+  const setup = el('div',
+    'font-family:var(--sans);font-size:clamp(14px,2vw,22px);font-weight:400;color:#888;margin-bottom:clamp(14px,2.5vh,28px)');
+  setup.textContent = 'your social post already has everything it needs';
+
+  const checks = el('div', 'display:flex;flex-direction:column;gap:clamp(10px,2vh,20px);align-items:flex-start;margin-bottom:clamp(18px,3vh,36px)');
+  const ITEMS = [
+    { txt: 'the idea',        col: 'var(--teal)' },
+    { txt: 'your expertise',  col: 'var(--teal)' },
+    { txt: 'your voice',      col: 'var(--teal)' },
+  ];
+  const checkEls = ITEMS.map(({ txt, col }) => {
+    const row = el('div', 'display:flex;align-items:center;gap:clamp(14px,2.5vw,24px)');
+    const chk = el('div',
+      `width:clamp(26px,3.5vw,40px);height:clamp(26px,3.5vw,40px);border-radius:50%;` +
+      `background:${col};display:flex;align-items:center;justify-content:center;` +
+      `color:white;font-size:clamp(12px,1.6vw,18px);flex-shrink:0`);
+    chk.textContent = '✓';
+    const lbl = el('div',
+      `font-family:var(--serif);font-size:clamp(30px,5.5vw,72px);line-height:1;color:var(--dark)`);
+    lbl.textContent = txt;
+    row.append(chk, lbl);
+    checks.appendChild(row);
+    return { row, chk };
+  });
+
+  const bridge = el('div',
+    'font-family:var(--sans);font-size:clamp(13px,1.8vw,20px);color:#aaa;margin-bottom:clamp(8px,1.5vh,16px)');
+  bridge.textContent = 'it just needs';
+
+  const home = el('div',
+    'font-family:var(--serif);font-size:clamp(36px,6.5vw,88px);line-height:.95;color:var(--teal)');
+  home.textContent = 'a better home.';
+
+  root.append(setup, checks, bridge, home);
+
+  return {
+    play() {
+      pflyDown(setup);
+      checkEls.forEach(({ row, chk }) => { pflyRight(row); pfade(chk); });
+      pflyUp(bridge); pslam(home);
+
+      show(setup, 0);
+      checkEls.forEach(({ row, chk }, i) => {
+        show(row, 500 + i * 380);
+        tick(() => { chk.style.transition = TR_FADE; reflow(chk); chk.style.opacity = '1'; }, 600 + i * 380);
+      });
+      show(bridge, 500 + ITEMS.length * 380 + 200);
+      show(home,   500 + ITEMS.length * 380 + 500, TR_SLAM);
+    },
+    reset() {
+      hide(setup); hide(bridge); hide(home);
+      checkEls.forEach(({ row, chk }) => { hide(row); hide(chk); });
+    }
+  };
+}
+
+/* ─── S11: One more direction ─── */
+function buildS11() {
+  const root = document.getElementById('s11');
+  root.style.cssText = 'align-items:center;justify-content:center;text-align:center;padding:clamp(40px,6vw,80px)';
+
+  const lbl = el('div',
+    'font-family:var(--sans);font-size:clamp(11px,1.5vw,14px);font-weight:600;letter-spacing:.18em;' +
+    'text-transform:uppercase;color:#aaa;margin-bottom:clamp(12px,2.5vh,28px)');
+  lbl.textContent = 'your repurposing workflow right now';
+
+  // Social platforms → each other (expire)
+  const row1 = el('div', 'display:flex;align-items:center;gap:clamp(8px,1.5vw,16px);justify-content:center;flex-wrap:wrap;margin-bottom:clamp(10px,2vh,20px)');
+  const CHAIN = ['TikTok', '→', 'Instagram', '→', 'Facebook'];
+  const chainEls = CHAIN.map(item => {
+    const isArrow = item === '→';
+    const c = el('div',
+      isArrow
+        ? 'font-family:var(--sans);font-size:clamp(14px,2vw,22px);color:#ccc;font-weight:700'
+        : 'font-family:var(--sans);font-size:clamp(13px,1.8vw,20px);font-weight:600;color:#aaa;' +
+          'padding:clamp(6px,1vh,10px) clamp(10px,1.8vw,16px);background:white;border-radius:8px;border:2px solid #eee');
+    c.textContent = item;
+    row1.appendChild(c);
+    return c;
+  });
+
+  const expire = el('div',
+    'font-family:var(--sans);font-size:clamp(11px,1.4vw,14px);color:var(--rose);font-weight:600;' +
+    'letter-spacing:.08em;margin-bottom:clamp(14px,2.5vh,28px)');
+  expire.textContent = '↑ all expire within 24–48 hours';
+
+  const plus = el('div',
+    'font-family:var(--serif);font-size:clamp(40px,7vw,90px);line-height:1;color:var(--teal)');
+  plus.textContent = '+';
+
+  const newDir = el('div', 'display:flex;align-items:center;gap:clamp(8px,1.5vw,16px);justify-content:center;flex-wrap:wrap;margin-top:clamp(6px,1vh,12px)');
+  const newEls = ['your content', '→', 'YOUR WEBSITE'].map((item, i) => {
+    const isArrow = item === '→';
+    const c = el('div',
+      isArrow
+        ? 'font-family:var(--sans);font-size:clamp(18px,3vw,36px);color:var(--teal);font-weight:700'
+        : `font-family:var(--sans);font-size:clamp(13px,1.8vw,20px);font-weight:${i === 2 ? 700 : 500};` +
+          `color:${i === 2 ? 'white' : 'var(--teal)'};` +
+          `padding:clamp(8px,1.2vh,14px) clamp(12px,2vw,20px);border-radius:8px;` +
+          `background:${i === 2 ? 'var(--teal)' : 'rgba(42,191,154,.1)'};` +
+          `border:2px solid ${i === 2 ? 'var(--teal)' : 'rgba(42,191,154,.3)'}`);
+    c.textContent = item;
+    newDir.appendChild(c);
+    return c;
+  });
+
+  const compound = el('div',
+    'font-family:var(--sans);font-size:clamp(11px,1.4vw,14px);color:var(--teal);font-weight:600;' +
+    'letter-spacing:.08em;margin-top:clamp(8px,1.5vh,16px)');
+  compound.textContent = '↑ compounds for years. found by Google and AI.';
+
+  const punch = el('div',
+    'font-family:var(--serif);font-size:clamp(20px,3.5vw,48px);font-style:italic;color:var(--dark);' +
+    'margin-top:clamp(14px,2.5vh,30px)');
+  punch.textContent = 'same content. completely different long-term outcome.';
+
+  root.append(lbl, row1, expire, plus, newDir, compound, punch);
+
+  return {
+    play() {
+      pflyDown(lbl);
+      chainEls.forEach(c => pflyRight(c));
+      pflyUp(expire); pfade(plus);
+      newEls.forEach(c => pflyLeft(c));
+      pflyUp(compound); pflyUp(punch);
+
+      show(lbl, 0);
+      chainEls.forEach((c, i) => show(c, 300 + i * 140));
+      show(expire, 300 + CHAIN.length * 140 + 300);
+      tick(() => {
+        plus.style.transition = TR_FADE;
+        reflow(plus);
+        plus.style.opacity = '1';
+      }, 1400);
+      newEls.forEach((c, i) => show(c, 1700 + i * 220));
+      show(compound, 1700 + newEls.length * 220 + 300);
+      show(punch, 2800);
+    },
+    reset() {
+      hideAll(lbl, expire, plus, compound, punch);
+      chainEls.forEach(c => hide(c));
+      newEls.forEach(c => hide(c));
+    }
+  };
+}
+
+/* ─── S12: Training wheels → content pyramid ─── */
+function buildS12() {
+  const root = document.getElementById('s12');
+  root.style.cssText = 'align-items:center;justify-content:center;text-align:center;padding:clamp(40px,6vw,80px)';
+
+  const now = el('div',
+    'font-family:var(--sans);font-size:clamp(11px,1.5vw,14px);font-weight:600;letter-spacing:.18em;' +
+    'text-transform:uppercase;color:#aaa;margin-bottom:clamp(8px,1.5vh,16px)');
+  now.textContent = 'where you start';
+
+  const wheels = el('div',
+    'font-family:var(--serif);font-size:clamp(52px,9.5vw,130px);line-height:.92;color:var(--teal)');
+  wheels.textContent = 'training wheels';
+
+  const wSub = el('div',
+    'font-family:var(--sans);font-size:clamp(13px,1.8vw,20px);color:#888;margin-top:clamp(6px,1vh,12px);' +
+    'margin-bottom:clamp(16px,3vh,36px)');
+  wSub.textContent = 'use what you already have. start getting SEO visibility. right now.';
+
+  const arrow = el('div',
+    'font-family:var(--serif);font-size:clamp(32px,5.5vw,72px);line-height:1;color:var(--teal)');
+  arrow.textContent = '↓';
+
+  const next = el('div',
+    'font-family:var(--sans);font-size:clamp(11px,1.5vw,14px);font-weight:600;letter-spacing:.18em;' +
+    'text-transform:uppercase;color:#aaa;margin-top:clamp(10px,2vh,20px);margin-bottom:clamp(6px,1vh,12px)');
+  next.textContent = 'where you level up to';
+
+  const pyramid = el('div',
+    'font-family:var(--serif);font-size:clamp(52px,9.5vw,130px);line-height:.92;color:var(--dark)');
+  pyramid.textContent = 'the content pyramid';
+
+  const pSub = el('div',
+    'font-family:var(--sans);font-size:clamp(13px,1.8vw,20px);color:#888;margin-top:clamp(6px,1vh,12px)');
+  pSub.textContent = '"what do I write first, then how do I turn it into social?"';
+
+  const closer = el('div',
+    'font-family:var(--serif);font-size:clamp(20px,3.5vw,46px);font-style:italic;color:var(--teal);' +
+    'margin-top:clamp(14px,2.5vh,28px)');
+  closer.textContent = "we'll get there. but right now? you have more than enough.";
+
+  root.append(now, wheels, wSub, arrow, next, pyramid, pSub, closer);
+
+  return {
+    play() {
+      pflyDown(now); pslam(wheels); pflyDown(wSub); pfade(arrow);
+      pflyDown(next); pslam(pyramid); pflyDown(pSub); pflyUp(closer);
+
+      show(now, 0);
+      show(wheels, 250, TR_SLAM);
+      show(wSub, 900);
+      tick(() => {
+        arrow.style.transition = TR_FADE;
+        reflow(arrow);
+        arrow.style.opacity = '1';
+      }, 1500);
+      show(next, 1800);
+      show(pyramid, 2050, TR_SLAM);
+      show(pSub, 2700);
+      show(closer, 3500);
+    },
+    reset() { hideAll(now, wheels, wSub, arrow, next, pyramid, pSub, closer); }
+  };
+}
+
+/* ═══════════════════════════════════════════
+   SCENE MANAGEMENT
+═══════════════════════════════════════════ */
+const builders = [buildS1,buildS2,buildS3,buildS4,buildS5,buildS6,buildS7,buildS8,buildS9,buildS10,buildS11,buildS12];
+const ctrls    = builders.map((fn, i) => { const c = fn(); c.el = document.getElementById(`s${i+1}`); return c; });
+
+let current = 0;
+
+function goTo(idx) {
+  if (idx < 0 || idx >= ctrls.length) return;
+  clearAll();
+  ctrls[current].el.classList.remove('active');
+  ctrls[current].reset();
+  current = idx;
+  ctrls[current].el.classList.add('active');
+  setTimeout(() => ctrls[current].play(), 40);
+  document.getElementById('nav').textContent = `${idx + 1} / ${ctrls.length}`;
+}
+
+document.addEventListener('keydown', e => {
+  if      (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); goTo(current + 1); }
+  else if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   { e.preventDefault(); goTo(current - 1); }
+  else if (e.key === 'r' || e.key === 'R')                  { e.preventDefault(); clearAll(); ctrls[current].reset(); setTimeout(() => ctrls[current].play(), 40); }
+});
+
+goTo(0);
+</script>
+</body>
+</html>
