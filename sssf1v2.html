@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Website = Visibility Machine · B-Roll Suite</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #f7fffe;
+  --teal: #2abf9a;
+  --tl: #6ef2d2;
+  --rose: #c89a97;
+  --dark: #111;
+  --serif: 'Instrument Serif', serif;
+  --sans: 'DM Sans', sans-serif;
+}
+html, body {
+  width: 100vw; height: 100vh; overflow: hidden;
+  background: var(--bg);
+  font-family: var(--sans); color: var(--dark);
+  user-select: none; cursor: default;
+}
+.scene {
+  position: fixed; inset: 0;
+  display: flex; align-items: center; justify-content: center; flex-direction: column;
+  opacity: 0; pointer-events: none;
+  transition: opacity .3s ease;
+}
+.scene.active { opacity: 1; pointer-events: all; }
+
+@keyframes shakeIt {
+  0%,100% { transform: translateX(0) rotate(0); }
+  18%  { transform: translateX(-9px) rotate(-.6deg); }
+  36%  { transform: translateX(9px)  rotate(.6deg); }
+  54%  { transform: translateX(-6px) rotate(-.3deg); }
+  72%  { transform: translateX(6px)  rotate(.3deg); }
+  88%  { transform: translateX(-3px); }
+}
+@keyframes arrowBounce {
+  0%,100% { transform: translateX(0); }
+  50%     { transform: translateX(10px); }
+}
+@keyframes cursor {
+  0%,100% { border-right-color: var(--dark); }
+  50%     { border-right-color: transparent; }
+}
+@keyframes strikeDraw {
+  from { transform: scaleX(0); transform-origin: left; }
+  to   { transform: scaleX(1); transform-origin: left; }
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+@keyframes float {
+  0%,100% { transform: translateY(0); }
+  50%     { transform: translateY(-10px); }
+}
+@keyframes blink {
+  0%,100% { opacity: 1; } 50% { opacity: 0; }
+}
+
+#nav {
+  position: fixed; bottom: 22px; right: 28px;
+  font-family: var(--sans); font-size: 11px; font-weight: 500;
+  color: #ccc; letter-spacing: .1em; z-index: 9999;
+}
+</style>
+</head>
+<body>
+
+<div class="scene" id="s1"></div>
+<div class="scene" id="s2"></div>
+<div class="scene" id="s3"></div>
+<div class="scene" id="s4"></div>
+<div class="scene" id="s5"></div>
+<div class="scene" id="s6"></div>
+<div class="scene" id="s7"></div>
+<div class="scene" id="s8"></div>
+<div class="scene" id="s9"></div>
+<div class="scene" id="s10"></div>
+<div class="scene" id="s11"></div>
+<div class="scene" id="s12"></div>
+<div id="nav"></div>
+
+<script>
+/* ═══════════════════════════════════════════
+   ANIMATION ENGINE (transition-based, no fill-mode bugs)
+═══════════════════════════════════════════ */
+const TR      = 'opacity .55s cubic-bezier(.22,1,.36,1),transform .55s cubic-bezier(.22,1,.36,1)';
+const TR_SLAM = 'transform .65s cubic-bezier(.34,1.4,.64,1),opacity .38s ease';
+const TR_SLOW = 'opacity .8s cubic-bezier(.22,1,.36,1),transform .8s cubic-bezier(.22,1,.36,1)';
+const TR_FADE = 'opacity .55s ease';
+
+let timers = [], rafs = [];
+function tick(fn, ms) { const id = setTimeout(fn, ms); timers.push(id); }
+function clearAll() { timers.forEach(clearTimeout); rafs.forEach(cancelAnimationFrame); timers = []; rafs = []; }
+function reflow(el) { void el.offsetHeight; }
+
+function pflyDown(el)  { el.style.cssText += ';transition:none;opacity:0;transform:translateY(-32px)'; }
+function pflyUp(el)    { el.style.cssText += ';transition:none;opacity:0;transform:translateY(32px)'; }
+function pflyRight(el) { el.style.cssText += ';transition:none;opacity:0;transform:translateX(-65px)'; }
+function pflyLeft(el)  { el.style.cssText += ';transition:none;opacity:0;transform:translateX(65px)'; }
+function pslam(el)     { el.style.cssText += ';transition:none;opacity:0;transform:scale(2.4) translateY(-12px)'; }
+function pfade(el)     { el.style.cssText += ';transition:none;opacity:0'; }
+
+function show(el, delay, tr = TR) {
+  tick(() => {
+    el.style.transition = tr;
+    reflow(el);
+    el.style.opacity = '1';
+    el.style.transform = 'none';
+  }, delay);
+}
+function showFade(el, delay) {
+  tick(() => {
+    el.style.transition = TR_FADE;
+    reflow(el);
+    el.style.opacity = '1';
+  }, delay);
+}
+function hide(el) { el.style.transition = 'none'; el.style.opacity = '0'; }
+function hideAll(...els) { els.forEach(hide); }
+
+function wordSpans(text, stagger = 85, baseDelay = 0) {
+  return text.split(' ').map((word, i) => {
+    const s = document.createElement('span');
+    s.textContent = word;
+    s.style.display = 'inline-block';
+    s.style.marginRight = '0.28em';
+    s.style.opacity = '0';
+    s.style.transform = 'translateY(28px)';
+    const d = baseDelay + i * stagger;
+    s.style.transition = `opacity .5s cubic-bezier(.22,1,.36,1) ${d}ms,transform .5s cubic-bezier(.22,1,.36,1) ${d}ms`;
+    s._tr = s.style.transition;
+    return s;
+  });
+}
+function showWords(spans, parent) {
+  spans.forEach(s => { s.style.transition = s._tr; });
+  reflow(parent || spans[0].parentNode);
+  spans.forEach(s => { s.style.opacity = '1'; s.style.transform = 'none'; });
+}
+function hideWords(spans) {
+  spans.forEach(s => { s.style.transition = 'none'; s.style.opacity = '0'; s.style.transform = 'translateY(28px)'; });
+}
+
+function countTo(el, from, to, duration, decimals, onDone) {
+  const start = performance.now();
+  const ease  = t => 1 - Math.pow(1 - t, 3);
+  const step  = now => {
+    const p = Math.min((now - start) / duration, 1);
+    el.textContent = (from + (to - from) * ease(p)).toFixed(decimals || 0);
+    if (p < 1) { const id = requestAnimationFrame(step); rafs.push(id); }
+    else if (onDone) onDone();
+  };
+  rafs.push(requestAnimationFrame(step));
+}
+
+function el(tag, css, html) {
+  const e = document.createElement(tag);
+  if (css)  e.style.cssText = css;
+  if (html) e.innerHTML = html;
+  return e;
+}
+
+/* ═══════════════════════════════════════════
+   SCENES
+═══════════════════════════════════════════ */
+
+/* ─── S1: 48 hours vs YEARS ─── */
+function buildS1() {
+  const root = document.getElementById('s1');
+  root.style.cssText = 'align-items:center;justify-content:center;padding:clamp(40px,6vw,80px)';
+
+  const social = el('div',
+    'font-family:var(--sans);font-size:clamp(12px,1.8vw,17px);font-weight:500;letter-spacing:.18em;' +
+    'text-transform:uppercase;color:#aaa;margin-bottom:clamp(8px,1.5vh,16px)');
+  social.textContent = 'social media content';
+
+  const exRow = el('div', 'display:flex;align-items:center;gap:20px;margin-bottom:clamp(20px,4vh,48px)');
+  const exNum = el('div',
+    'font-family:var(--serif);font-size:clamp(80px,14vw,180px);line-height:.9;color:var(--rose);position:relative;display:inline-block');
+  exNum.textContent = '48';
+  const exBar = el('div',
+    'position:absolute;left:-4px;top:50%;width:calc(100% + 8px);height:4px;background:var(--rose);' +
+    'transform:scaleX(0);transform-origin:left');
+  exNum.appendChild(exBar);
+  const exUnit = el('div',
+    'font-family:var(--sans);font-size:clamp(22px,4vw,52px);font-weight:700;color:var(--rose);' +
+    'letter-spacing:-.01em;padding-bottom:clamp(8px,1.5vw,18px)');
+  exUnit.textContent = 'HRS';
+  exRow.append(exNum, exUnit);
+
+  const webLbl = el('div',
+    'font-family:var(--sans);font-size:clamp(12px,1.8vw,17px);font-weight:500;letter-spacing:.18em;' +
+    'text-transform:uppercase;color:#aaa;margin-bottom:clamp(6px,1vh,12px)');
+  webLbl.textContent = 'your website content';
+
+  const yr = el('div',
+    'font-family:var(--serif);font-size:clamp(100px,18vw,240px);line-height:.88;color:var(--teal)');
+  yr.textContent = 'YEARS';
+
+  const sub = el('div',
+    'font-family:var(--serif);font-size:clamp(18px,3vw,40px);font-style:italic;color:var(--dark);' +
+    'margin-top:clamp(10px,1.8vh,22px)');
+  sub.textContent = 'compounds. for free.';
+
+  root.append(social, exRow, webLbl, yr, sub);
+
+  return {
+    play() {
+      pflyUp(social); pflyUp(exNum); pflyUp(exUnit);
+      pflyDown(webLbl); pslam(yr); pflyDown(sub);
+      exBar.style.animation = 'none'; exBar.style.transform = 'scaleX(0)';
+
+      show(social,  0);
+      show(exNum,   280, TR_SLAM);
+      show(exUnit,  420, TR_SLAM);
+      tick(() => { exBar.style.animation = 'strikeDraw .55s ease forwards'; }, 1000);
+      show(webLbl,  1400);
+      show(yr,      1700, TR_SLAM);
+      show(sub,     2300);
+    },
+    reset() {
+      hideAll(social, exNum, exUnit, webLbl, yr, sub);
+      exBar.style.animation = 'none'; exBar.style.transform = 'scaleX(0)';
+    }
+  };
+}
+
+/* ─── S2: Google spiders ─── */
+function buildS2() {
+  const root = document.getElementById('s2');
+  root.style.cssText = 'align-items:center;justify-content:center;text-align:center;padding:clamp(40px,6vw,80px)';
+
+  const intro = el('div',
+    'font-family:var(--sans);font-size:clamp(14px,2vw,22px);font-weight:400;color:#888;margin-bottom:clamp(8px,1.5vh,16px)');
+  intro.textContent = 'Google has these things called';
+
+  const spiders = el('div',
+    'font-family:var(--serif);font-size:clamp(80px,14vw,190px);line-height:.9;color:var(--dark)');
+  spiders.textContent = 'SPIDERS';
+
+  const emoji = el('div',
+    'font-size:clamp(44px,7vw,90px);line-height:1;margin-top:clamp(10px,2vh,24px)');
+  emoji.textContent = '🕷️';
+
+  const desc = el('div',
+    'font-family:var(--sans);font-size:clamp(14px,2vw,22px);color:#888;max-width:540px;line-height:1.6;' +
+    'margin-top:clamp(14px,2.5vh,30px)');
+
+  const dSpans = wordSpans('crawling every corner of the internet — finding pages, reading them, figuring out what they\'re about', 70, 0);
+  dSpans.forEach(s => desc.appendChild(s));
+
+  const filing = el('div',
+    'font-family:var(--serif);font-size:clamp(18px,3vw,40px);font-style:italic;color:var(--teal);' +
+    'margin-top:clamp(14px,2.5vh,30px)');
+  filing.textContent = 'then filing it in a massive library.';
+
+  root.append(intro, spiders, emoji, desc, filing);
+
+  return {
+    play() {
+      pflyDown(intro); pslam(spiders); pfade(emoji); pflyUp(filing);
+      hideWords(dSpans);
+
+      show(intro, 0);
+      show(spiders, 300, TR_SLAM);
+      tick(() => {
+        emoji.style.transition = TR_FADE;
+        reflow(emoji);
+        emoji.style.opacity = '1';
+        emoji.style.animation = 'float 2.5s ease-in-out infinite';
+      }, 700);
+      tick(() => showWords(dSpans, desc), 1200);
+      show(filing, 1200 + dSpans.length * 70 + 600);
+    },
+    reset() {
+      hideAll(intro, spiders, filing);
+      emoji.style.transition = 'none'; emoji.style.opacity = '0'; emoji.style.animation = '';
+      hideWords(dSpans);
+    }
+  };
+}
+
+/* ─── S3: Raise your hand to Google ─── */
+function buildS3() {
+  const root = document.getElementById('s3');
+  root.style.cssText = 'align-items:center;justify-content:center;text-align:center;padding:clamp(40px,6vw,80px)';
+
+  const nudge = el('div',
+    'font-family:var(--sans);font-size:clamp(14px,2vw,22px);font-weight:400;color:#888;margin-bottom:clamp(10px,2vh,24px)');
+  nudge.textContent = 'you have to give Google a nudge — and that\'s where';
+
+  const seoLbl = el('div',
+    'font-family:var(--serif);font-size:clamp(90px,16vw,210px);line-height:.88;color:var(--teal)');
+  seoLbl.textContent = 'SEO';
+
+  const comes = el('div',
+    'font-family:var(--serif);font-size:clamp(26px,4.5vw,60px);font-style:italic;color:var(--dark);' +
+    'margin-bottom:clamp(20px,4vh,48px)');
+  comes.textContent = 'comes in.';
+
+  const mechanic = el('div',
+    'font-family:var(--sans);font-size:clamp(12px,1.6vw,16px);font-weight:600;letter-spacing:.12em;' +
+    'text-transform:uppercase;color:#bbb;margin-bottom:clamp(8px,1.5vh,16px)');
+  mechanic.textContent = 'example';
+
+  const phrase = el('div',
+    'background:white;border:2px solid #e8e8e8;border-radius:12px;' +
+    'padding:clamp(12px,2vh,20px) clamp(18px,3vw,28px);' +
+    'font-family:var(--sans);font-size:clamp(16px,2.5vw,28px);font-weight:600;color:var(--dark);' +
+    'box-shadow:0 4px 20px rgba(0,0,0,.06);width:min(600px,80vw)');
+
+  const phraseTxt = el('span', 'border-right:2px solid var(--dark);padding-right:2px;animation:cursor .7s step-end infinite');
+  phraseTxt.textContent = '';
+  phrase.appendChild(phraseTxt);
+
+  const handLbl = el('div',
+    'font-family:var(--sans);font-size:clamp(12px,1.6vw,16px);color:#aaa;margin-top:clamp(10px,1.8vh,20px);font-style:italic');
+  handLbl.textContent = '→ use this phrase in your title, heading, and meta description';
+
+  root.append(nudge, seoLbl, comes, mechanic, phrase, handLbl);
+
+  const QUERY = 'how to change a tire';
+  let typeInt = null;
+
+  return {
+    play() {
+      pflyDown(nudge); pslam(seoLbl); pflyDown(comes); pflyUp(mechanic);
+      pflyUp(phrase); pfade(handLbl);
+      phraseTxt.textContent = '';
+      phraseTxt.style.borderRight = '2px solid var(--dark)';
+      phraseTxt.style.animation = 'cursor .7s step-end infinite';
+
+      show(nudge, 0);
+      show(seoLbl, 350, TR_SLAM);
+      show(comes, 600);
+      show(mechanic, 1300);
+      show(phrase, 1550);
+
+      tick(() => {
+        let i = 0;
+        typeInt = setInterval(() => {
+          phraseTxt.textContent += QUERY[i++];
+          if (i >= QUERY.length) {
+            clearInterval(typeInt);
+            phraseTxt.style.borderRight = 'none';
+            phraseTxt.style.animation = 'none';
+            phraseTxt.style.color = 'var(--teal)';
+          }
+        }, 60);
+      }, 1900);
+
+      tick(() => {
+        handLbl.style.transition = TR_FADE;
+        reflow(handLbl);
+        handLbl.style.opacity = '1';
+      }, 1900 + QUERY.length * 60 + 400);
+    },
+    reset() {
+      clearInterval(typeInt);
+      hideAll(nudge, seoLbl, comes, mechanic, phrase, handLbl);
+      phraseTxt.textContent = '';
+      phraseTxt.style.borderRight = '2px solid var(--dark)';
+      phraseTxt.style.animation = 'cursor .7s step-end infinite';
+      phraseTxt.style.color = 'var(--dark)';
+    }
+  };
+}
+
+/* ─── S4: Niche keywords ─── */
+function buildS4() {
+  const root = document.getElementById('s4');
+  root.style.cssText = 'align-items:center;justify-content:center;text-align:center;padding:clamp(40px,6vw,80px)';
+
+  const notLabel = el('div',
+    'font-family:var(--sans);font-size:clamp(11px,1.5vw,15px);font-weight:600;letter-spacing:.15em;' +
+    'text-transform:uppercase;color:#bbb;margin-bottom:clamp(6px,1vh,12px)');
+  notLabel.textContent = "not this";
+
+  const broad = el('div',
+    'font-family:var(--serif);font-size:clamp(28px,5vw,64px);color:var(--rose);position:relative;display:inline-block;' +
+    'margin-bottom:clamp(20px,4vh,48px)');
+  broad.textContent = '"how to change a tire"';
+  const broadBar = el('div',
+    'position:absolute;left:-4px;top:50%;width:calc(100%+8px);height:3px;background:var(--rose);' +
+    'transform:scaleX(0);transform-origin:left');
+  broad.appendChild(broadBar);
+
+  const thisLabel = el('div',
+    'font-family:var(--sans);font-size:clamp(11px,1.5vw,15px);font-weight:600;letter-spacing:.15em;' +
+    'text-transform:uppercase;color:var(--teal);margin-bottom:clamp(8px,1.5vh,16px)');
+  thisLabel.textContent = 'this';
+
+  const niche = el('div',
+    'font-family:var(--serif);font-size:clamp(28px,5vw,66px);line-height:1.1;color:var(--dark);' +
+    'margin-bottom:clamp(16px,3vh,36px);max-width:720px');
+  niche.textContent = '"brand designer for wellness coaches"';
+
+  const tagRow = el('div', 'display:flex;gap:clamp(16px,3vw,40px);justify-content:center;flex-wrap:wrap');
+  ['specific.', 'niche.', 'YOURS.'].forEach((word, i) => {
+    const tag = el('div',
+      `font-family:var(--serif);font-size:clamp(22px,4vw,52px);font-style:italic;` +
+      `color:${i === 2 ? 'var(--teal)' : 'var(--dark)'}`);
+    tag.textContent = word;
+    tagRow.appendChild(tag);
+    pflyUp(tag);
+    tag._delay = i;
+  });
+  const tagEls = Array.from(tagRow.children);
+
+  root.append(notLabel, broad, thisLabel, niche, tagRow);
+
+  return {
+    play() {
+      pflyUp(notLabel); pfade(broad); pfade(thisLabel); pfade(niche);
+      broadBar.style.animation = 'none'; broadBar.style.transform = 'scaleX(0)';
+      tagEls.forEach(t => pflyUp(t));
+
+      show(notLabel, 0);
+      showFade(broad, 280);
+      tick(() => { broadBar.style.animation = 'strikeDraw .5s ease forwards'; }, 800);
+      show(thisLabel, 1300);
+      showFade(niche, 1600);
+      tagEls.forEach((t, i) => show(t, 2400 + i * 220, TR_SLAM));
+    },
+    reset() {
+      hideAll(notLabel, broad, thisLabel, niche);
+      broadBar.style.animation = 'none'; broadBar.style.transform = 'scaleX(0)';
+      tagEls.forEach(t => hide(t));
+    }
+  };
+}
+
+/* ─── S5: Five doors → fifty ─── */
+function buildS5() {
+  const root = document.getElementById('s5');
+  root.style.cssText = 'align-items:center;justify-content:center;text-align:center;padding:clamp(40px,6vw,80px)';
+
+  const intro = el('div',
+    'font-family:var(--sans);font-size:clamp(14px,2vw,22px);font-weight:400;color:#888;margin-bottom:clamp(8px,1.5vh,16px)');
+  intro.textContent = 'right now most websites have';
+
+  const numRow = el('div', 'display:flex;align-items:flex-end;justify-content:center;gap:16px');
+  const numEl = el('div',
+    'font-family:var(--serif);font-size:clamp(140px,24vw,320px);line-height:.88;color:var(--dark)');
+  numEl.textContent = '5';
+  const doorsLbl = el('div',
+    'font-family:var(--sans);font-size:clamp(28px,5vw,68px);font-weight:700;color:var(--dark);' +
+    'padding-bottom:clamp(14px,2vw,24px);letter-spacing:-.01em');
+  doorsLbl.textContent = 'pages';
+  numRow.append(numEl, doorsLbl);
+
+  const imagine = el('div',
+    'font-family:var(--serif);font-size:clamp(20px,3.5vw,48px);font-style:italic;color:var(--dark);' +
+    'margin-top:clamp(10px,2vh,24px);margin-bottom:clamp(10px,2vh,24px)');
+  imagine.textContent = 'imagine having';
+
+  const bigRow = el('div', 'display:flex;align-items:flex-end;justify-content:center;gap:16px');
+  const bigNum = el('div',
+    'font-family:var(--serif);font-size:clamp(140px,24vw,320px);line-height:.88;color:var(--teal)');
+  bigNum.textContent = '50';
+  const bigDoors = el('div',
+    'font-family:var(--sans);font-size:clamp(28px,5vw,68px);font-weight:700;color:var(--teal);' +
+    'padding-bottom:clamp(14px,2vw,24px);letter-spacing:-.01em');
+  bigDoors.textContent = 'doors';
+  bigRow.append(bigNum, bigDoors);
+
+  const sub = el('div',
+    'font-family:var(--sans);font-size:clamp(13px,1.8vw,20px);color:#888;margin-top:clamp(10px,1.8vh,20px)');
+  sub.textContent = 'inviting your ideal client in — for years to come';
+
+  root.append(intro, numRow, imagine, bigRow, sub);
+
+  return {
+    play() {
+      pflyDown(intro); pslam(numEl); pslam(doorsLbl);
+      pflyDown(imagine); pslam(bigNum); pslam(bigDoors); pflyDown(sub);
+
+      show(intro,   0);
+      show(numEl,   280, TR_SLAM);
+      show(doorsLbl,420, TR_SLAM);
+      show(imagine, 1300);
+      show(bigNum,  1700, TR_SLAM);
+      show(bigDoors,1900, TR_SLAM);
+      tick(() => {
+        countTo(bigNum, 5, 50, 1200, 0);
+        bigNum.style.color = 'var(--teal)';
+      }, 2000);
+      show(sub, 3000);
+    },
+    reset() {
+      hideAll(intro, numEl, doorsLbl, imagine, bigNum, bigDoors, sub);
+      bigNum.textContent = '50';
+      bigNum.style.color = 'var(--teal)';
+    }
+  };
+}
+
+/* ─── S6: AI recommends you ─── */
+function buildS6() {
+  const root = document.getElementById('s6');
+  root.style.cssText = 'align-items:flex-start;padding:max(40px,7vw);gap:clamp(14px,2.5vh,24px);justify-content:center';
+
+  const albl = el('div',
+    'font-family:var(--sans);font-size:clamp(11px,1.4vw,14px);font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#aaa');
+  albl.textContent = 'when someone asks an AI tool…';
+
+  const query = el('div',
+    'background:var(--teal);color:white;border-radius:16px 16px 4px 16px;' +
+    'padding:clamp(12px,2vh,18px) clamp(16px,2.5vw,24px);max-width:min(520px,76vw);' +
+    'align-self:flex-end;margin-left:auto;font-family:var(--sans);' +
+    'font-size:clamp(14px,1.9vw,20px);font-weight:500;line-height:1.5');
+  query.textContent = '"I\'m a coach looking for a brand designer who specializes in wellness brands"';
+
+  const resp = el('div',
+    'background:white;border-radius:4px 16px 16px 16px;' +
+    'padding:clamp(14px,2.5vh,22px) clamp(16px,2.5vw,24px);max-width:min(600px,82vw);' +
+    'box-shadow:0 4px 24px rgba(0,0,0,.07)');
+  const aiHdr = el('div',
+    'font-family:var(--sans);font-size:clamp(9px,1.1vw,12px);font-weight:700;letter-spacing:.1em;' +
+    'text-transform:uppercase;color:#aaa;margin-bottom:12px');
+  aiHdr.textContent = 'AI  ·  based on web sources';
+  const aiTxt = el('div',
+    'font-family:var(--sans);font-size:clamp(13px,1.8vw,18px);color:#333;line-height:1.7');
+  aiTxt.innerHTML = 'Based on indexed blog posts and website content, <span style="font-weight:700;color:var(--teal);background:rgba(42,191,154,.12);padding:1px 5px;border-radius:4px">Your Name Here</span> specializes in brand design for wellness coaches. Their blog at <span style="font-weight:600">yourwebsite.com</span> covers this topic extensively…';
+  const src = el('div',
+    'font-family:var(--sans);font-size:clamp(10px,1.3vw,13px);color:var(--teal);font-weight:500;margin-top:10px');
+  src.textContent = '↗ source: yourwebsite.com/blog/branding-for-wellness-coaches';
+  resp.append(aiHdr, aiTxt, src);
+
+  const mind = el('div',
+    'font-family:var(--serif);font-size:clamp(24px,4vw,52px);color:var(--dark);margin-top:4px');
+  mind.innerHTML = 'your name. recommended by AI. <span style="color:var(--teal)">to your exact client.</span>';
+
+  root.append(albl, query, resp, mind);
+
+  return {
+    play() {
+      pflyDown(albl); pflyLeft(query); pflyRight(resp); pflyDown(mind);
+      show(albl,  0);
+      show(query, 400);
+      show(resp,  1200);
+      show(mind,  2300);
+    },
+    reset() { hideAll(albl, query, resp, mind); }
+  };
+}
+
+/* ─── S7: Unfair advantage ─── */
+function buildS7() {
+  const root = document.getElementById('s7');
+  root.style.cssText = 'align-items:center;justify-content:center;text-align:center;padding:clamp(40px,6vw,80px)';
+
+  const quietly = el('div',
+    'font-family:var(--sans);font-size:clamp(14px,2vw,22px);font-weight:400;color:#888;margin-bottom:clamp(10px,2vh,24px);max-width:520px;line-height:1.6');
+  const qSpans = wordSpans('while everyone else feeds the social media algorithm — you could be quietly building', 70, 0);
+  qSpans.forEach(s => quietly.appendChild(s));
+
+  const unfair = el('div',
+    'font-family:var(--serif);font-size:clamp(70px,12.5vw,170px);line-height:.92;color:var(--dark)');
+  unfair.textContent = 'UNFAIR';
+  const advantage = el('div',
+    'font-family:var(--serif);font-size:clamp(70px,12.5vw,170px);line-height:.92;color:var(--teal);' +
+    'margin-bottom:clamp(14px,2.5vh,30px)');
+  advantage.textContent = 'ADVANTAGE';
+
+  const avail = el('div',
+    'font-family:var(--sans);font-size:clamp(13px,1.8vw,20px);color:#888;font-weight:500;letter-spacing:.04em');
+  avail.textContent = 'available to you right now';
+
+  root.append(quietly, unfair, advantage, avail);
+
+  return {
+    play() {
+      hideWords(qSpans); pslam(unfair); pslam(advantage); pflyUp(avail);
+
+      tick(() => showWords(qSpans, quietly), 0);
+      show(unfair,    qSpans.length * 70 + 400,  TR_SLAM);
+      show(advantage, qSpans.length * 70 + 640,  TR_SLAM);
+      show(avail,     qSpans.length * 70 + 1200);
+    },
+    reset() {
+      hideWords(qSpans);
+      hideAll(unfair, advantage, avail);
+    }
+  };
+}
+
+/* ─── S8: You don't own it ─── */
+function buildS8() {
+  const root = document.getElementById('s8');
+  root.style.cssText = 'align-items:center;justify-content:center;text-align:center;padding:clamp(40px,6vw,80px)';
+
+  const onEvery = el('div',
+    'font-family:var(--sans);font-size:clamp(14px,2vw,22px);font-weight:400;color:#888;margin-bottom:clamp(10px,2vh,24px)');
+  onEvery.textContent = 'every platform you\'re on right now —';
+
+  const guest = el('div',
+    'font-family:var(--serif);font-size:clamp(56px,10vw,136px);line-height:.95;color:var(--rose)');
+  guest.textContent = 'you are a GUEST';
+
+  const prop = el('div',
+    'font-family:var(--serif);font-size:clamp(28px,5vw,68px);font-style:italic;color:var(--dark);' +
+    'margin-bottom:clamp(20px,4vh,44px)');
+  prop.textContent = "on someone else's property";
+
+  const platRow = el('div', 'display:flex;gap:clamp(14px,3vw,40px);justify-content:center;flex-wrap:wrap;margin-bottom:clamp(16px,3vh,32px)');
+  const PLATS = ['Instagram', 'TikTok', 'LinkedIn', 'Facebook'];
+  const platEls = PLATS.map(name => {
+    const p = el('div',
+      'font-family:var(--sans);font-size:clamp(12px,2vw,22px);font-weight:600;color:#888;position:relative;padding:2px 0');
+    p.textContent = name;
+    const bar = el('div',
+      'position:absolute;left:-2px;top:50%;width:calc(100%+4px);height:2.5px;background:var(--rose);' +
+      'transform:scaleX(0);transform-origin:left');
+    p.appendChild(bar);
+    platRow.appendChild(p);
+    return { el: p, bar };
+  });
+
+  const change = el('div',
+    'font-family:var(--sans);font-size:clamp(13px,1.8vw,20px);font-weight:600;color:var(--rose);letter-spacing:.04em');
+  change.textContent = 'they can change everything tomorrow and there is nothing you can do';
+
+  root.append(onEvery, guest, prop, platRow, change);
+
+  return {
+    play() {
+      pflyDown(onEvery); pslam(guest); pflyDown(prop);
+      platEls.forEach(({ el: pe }) => pflyUp(pe));
+      pflyUp(change);
+      platEls.forEach(({ bar }) => { bar.style.animation = 'none'; bar.style.transform = 'scaleX(0)'; });
+
+      show(onEvery, 0);
+      show(guest,   320, TR_SLAM);
+      show(prop,    560);
+      platEls.forEach(({ el: pe }, i) => show(pe, 1400 + i * 140));
+      tick(() => {
+        platEls.forEach(({ bar }, i) => {
+          bar.style.animation = `strikeDraw .4s ease ${i * 90}ms forwards`;
+        });
+      }, 1900);
+      show(change, 2600);
+    },
+    reset() {
+      hideAll(onEvery, guest, prop, change);
+      platEls.forEach(({ el: pe, bar }) => { hide(pe); bar.style.animation = 'none'; bar.style.transform = 'scaleX(0)'; });
+    }
+  };
+}
+
+/* ─── S9: Platforms die ─── */
+function buildS9() {
+  const root = document.getElementById('s9');
+  root.style.cssText = 'align-items:center;justify-content:center;text-align:center;padding:clamp(40px,6vw,80px)';
+
+  const DEAD = ['Vine', 'MySpace', 'Dailybooth', 'Google+'];
+  const deadRow = el('div', 'display:flex;flex-wrap:wrap;gap:clamp(12px,2.5vw,32px);justify-content:center;margin-bottom:clamp(24px,4vh,48px)');
+  const deadEls = DEAD.map(name => {
+    const p = el('div', 'font-family:var(--serif);font-size:clamp(28px,5vw,64px);color:#ccc;position:relative;display:inline-block');
+    p.textContent = name;
+    const bar = el('div',
+      'position:absolute;left:-3px;top:50%;width:calc(100%+6px);height:3px;background:var(--rose);' +
+      'transform:scaleX(0);transform-origin:left');
+    p.appendChild(bar);
+    deadRow.appendChild(p);
+    return { el: p, bar };
+  });
+
+  const gone = el('div',
+    'font-family:var(--serif);font-size:clamp(52px,9vw,124px);font-style:italic;color:var(--rose);' +
+    'margin-bottom:clamp(16px,3vh,36px)');
+  gone.textContent = 'one day… gone.';
+
+  const divider = el('div', 'width:min(300px,60vw);height:2px;background:#eee;margin-bottom:clamp(16px,3vh,36px)');
+
+  const yours = el('div',
+    'font-family:var(--serif);font-size:clamp(48px,8.5vw,116px);color:var(--teal)');
+  yours.textContent = 'YOUR WEBSITE';
+
+  const stays = el('div',
+    'font-family:var(--sans);font-size:clamp(13px,1.8vw,20px);font-weight:600;color:var(--teal);' +
+    'letter-spacing:.08em;margin-top:clamp(6px,1vh,12px)');
+  stays.textContent = 'nobody can take that from you';
+
+  root.append(deadRow, gone, divider, yours, stays);
+
+  return {
+    play() {
+      deadEls.forEach(({ el: pe }) => pflyDown(pe));
+      deadEls.forEach(({ bar }) => { bar.style.animation = 'none'; bar.style.transform = 'scaleX(0)'; });
+      pslam(gone); pfade(divider); pslam(yours); pflyUp(stays);
+
+      deadEls.forEach(({ el: pe }, i) => show(pe, i * 200));
+      tick(() => {
+        deadEls.forEach(({ bar }, i) => {
+          bar.style.animation = `strikeDraw .45s ease ${i * 160}ms forwards`;
+        });
+      }, DEAD.length * 200 + 200);
+      show(gone,    DEAD.length * 200 + 900, TR_SLAM);
+      showFade(divider, DEAD.length * 200 + 1500);
+      show(yours,   DEAD.length * 200 + 1800, TR_SLAM);
+      show(stays,   DEAD.length * 200 + 2300);
+    },
+    reset() {
+      hideAll(gone, divider, yours, stays);
+      deadEls.forEach(({ el: pe, bar }) => { hide(pe); bar.style.animation = 'none'; bar.style.transform = 'scaleX(0)'; });
+    }
+  };
+}
+
+/* ─── S10: ATM in a dark alley ─── */
+function buildS10() {
+  const root = document.getElementById('s10');
+  root.style.cssText = 'align-items:center;justify-content:center;text-align:center;padding:clamp(40px,6vw,80px)';
+
+  const analogy = el('div',
+    'font-family:var(--sans);font-size:clamp(11px,1.5vw,15px);font-weight:600;letter-spacing:.16em;' +
+    'text-transform:uppercase;color:#aaa;margin-bottom:clamp(8px,1.5vh,16px)');
+  analogy.textContent = 'think of your website like';
+
+  const atm = el('div',
+    'font-family:var(--serif);font-size:clamp(52px,9.5vw,130px);line-height:.95;color:var(--dark)');
+  atm.textContent = 'an ATM';
+
+  const sub = el('div',
+    'font-family:var(--serif);font-size:clamp(24px,4.5vw,60px);font-style:italic;color:var(--rose);' +
+    'margin-bottom:clamp(20px,4vh,44px)');
+  sub.textContent = 'in a dark alley';
+
+  const checks = [
+    { text: 'fully loaded',        col: 'var(--teal)' },
+    { text: 'completely accessible', col: 'var(--teal)' },
+    { text: 'nobody knows it\'s there', col: 'var(--rose)' },
+  ];
+
+  const checkEls = checks.map(({ text, col }) => {
+    const row = el('div', 'display:flex;align-items:center;gap:clamp(10px,2vw,20px);justify-content:center;margin-bottom:clamp(8px,1.5vh,16px)');
+    const dot = el('div',
+      `width:clamp(10px,1.5vw,16px);height:clamp(10px,1.5vw,16px);border-radius:50%;background:${col};flex-shrink:0`);
+    const lbl = el('div',
+      `font-family:var(--sans);font-size:clamp(16px,2.5vw,30px);font-weight:600;color:${col}`);
+    lbl.textContent = text;
+    row.append(dot, lbl);
+    root.appendChild(row);
+    return row;
+  });
+
+  const waiting = el('div',
+    'font-family:var(--serif);font-size:clamp(20px,3.5vw,48px);font-style:italic;color:var(--teal);' +
+    'margin-top:clamp(12px,2vh,28px)');
+  waiting.textContent = 'just waiting for you to USE it.';
+
+  root.prepend(analogy, atm, sub);
+  root.appendChild(waiting);
+
+  return {
+    play() {
+      pflyDown(analogy); pslam(atm); pflyDown(sub);
+      checkEls.forEach(r => pflyRight(r));
+      pflyUp(waiting);
+
+      show(analogy, 0);
+      show(atm,   300, TR_SLAM);
+      show(sub,   520);
+      checkEls.forEach((r, i) => show(r, 1400 + i * 300));
+      show(waiting, 1400 + checkEls.length * 300 + 400);
+    },
+    reset() {
+      hideAll(analogy, atm, sub, waiting);
+      checkEls.forEach(r => hide(r));
+    }
+  };
+}
+
+/* ─── S11: The long game — first lead at post 11 ─── */
+function buildS11() {
+  const root = document.getElementById('s11');
+  root.style.cssText = 'align-items:center;justify-content:center;text-align:center;padding:clamp(40px,6vw,80px)';
+
+  const lbl = el('div',
+    'font-family:var(--sans);font-size:clamp(12px,1.8vw,17px);font-weight:500;letter-spacing:.15em;' +
+    'text-transform:uppercase;color:#aaa;margin-bottom:clamp(8px,1.5vh,16px)');
+  lbl.textContent = 'one post a month. first lead at post';
+
+  const numRow = el('div', 'display:flex;align-items:center;justify-content:center;gap:16px');
+  const numEl = el('div',
+    'font-family:var(--serif);font-size:clamp(140px,24vw,320px);line-height:.88;color:var(--teal)');
+  numEl.textContent = '0';
+
+  numRow.appendChild(numEl);
+
+  const outcome = el('div',
+    'font-family:var(--serif);font-size:clamp(22px,4vw,52px);font-style:italic;color:var(--dark);' +
+    'margin-top:clamp(10px,2vh,24px);margin-bottom:clamp(10px,2vh,24px)');
+  outcome.textContent = 'filled out her contact form.';
+
+  const boost = el('div',
+    'font-family:var(--sans);font-size:clamp(13px,1.8vw,20px);color:#888;max-width:500px;line-height:1.6');
+  boost.textContent = 'imagine what happens at 2 posts a month. or 4. the timeline compresses dramatically.';
+
+  const compound = el('div',
+    'font-family:var(--serif);font-size:clamp(20px,3.5vw,48px);color:var(--teal);margin-top:clamp(12px,2vh,24px);font-style:italic');
+  compound.textContent = 'the more you publish, the faster it compounds.';
+
+  root.append(lbl, numRow, outcome, boost, compound);
+
+  return {
+    play() {
+      pflyDown(lbl); pflyDown(numEl); pflyDown(outcome); pflyDown(boost); pflyDown(compound);
+      numEl.textContent = '0';
+
+      show(lbl,    0);
+      show(numEl,  300, TR_SLAM);
+      tick(() => {
+        countTo(numEl, 0, 11, 1800, 0, () => {
+          numEl.style.animation = 'shakeIt .45s ease';
+          tick(() => { numEl.style.animation = ''; }, 470);
+        });
+      }, 500);
+      show(outcome, 2600);
+      show(boost,   3400);
+      show(compound,4200);
+    },
+    reset() {
+      hideAll(lbl, numEl, outcome, boost, compound);
+      numEl.style.animation = '';
+      numEl.textContent = '0';
+    }
+  };
+}
+
+/* ─── S12: Content investor ─── */
+function buildS12() {
+  const root = document.getElementById('s12');
+  root.style.cssText = 'align-items:center;justify-content:center;text-align:center;padding:clamp(40px,6vw,80px)';
+
+  const notA = el('div',
+    'font-family:var(--sans);font-size:clamp(14px,2.2vw,24px);font-weight:400;color:#aaa;' +
+    'margin-bottom:clamp(4px,0.8vh,10px);position:relative;display:inline-block');
+  notA.textContent = "you're not becoming a blogger";
+  const notBar = el('div',
+    'position:absolute;left:-2px;top:50%;width:calc(100%+4px);height:2px;background:var(--rose);' +
+    'transform:scaleX(0);transform-origin:left');
+  notA.appendChild(notBar);
+
+  const becoming = el('div',
+    'font-family:var(--serif);font-size:clamp(54px,9.5vw,130px);line-height:.95;color:var(--dark)');
+  becoming.textContent = "you're becoming";
+  const investor = el('div',
+    'font-family:var(--serif);font-size:clamp(54px,9.5vw,130px);line-height:.95;color:var(--teal);' +
+    'margin-bottom:clamp(16px,3vh,36px)');
+  investor.textContent = 'a content investor';
+
+  const divRow = el('div', 'display:flex;gap:clamp(20px,4vw,56px);justify-content:center;flex-wrap:wrap;margin-bottom:clamp(14px,2.5vh,30px)');
+  [
+    { label: 'every post', sub: 'is an asset' },
+    { label: 'pays dividends', sub: 'over time' },
+    { label: "doesn't expire", sub: 'unlike your feed' },
+  ].forEach(({ label, sub }) => {
+    const item = el('div', 'text-align:center');
+    const lb   = el('div', 'font-family:var(--serif);font-size:clamp(16px,2.8vw,36px);color:var(--teal);font-style:italic');
+    lb.textContent = label;
+    const sb   = el('div', 'font-family:var(--sans);font-size:clamp(10px,1.3vw,14px);color:#bbb;font-weight:500;letter-spacing:.06em;margin-top:4px');
+    sb.textContent = sub;
+    item.append(lb, sb);
+    divRow.appendChild(item);
+    pflyUp(item);
+    item._i = divRow.children.length - 1;
+  });
+  const divItems = Array.from(divRow.children);
+
+  const closer = el('div',
+    'font-family:var(--serif);font-size:clamp(18px,3vw,42px);font-style:italic;color:var(--dark)');
+  closer.textContent = "it doesn't expire.";
+
+  root.append(notA, becoming, investor, divRow, closer);
+
+  return {
+    play() {
+      pflyDown(notA); pslam(becoming); pslam(investor);
+      divItems.forEach(d => pflyUp(d));
+      pflyUp(closer);
+      notBar.style.animation = 'none'; notBar.style.transform = 'scaleX(0)';
+
+      show(notA, 0);
+      tick(() => { notBar.style.animation = 'strikeDraw .5s ease forwards'; }, 700);
+      show(becoming, 1100, TR_SLAM);
+      show(investor, 1350, TR_SLAM);
+      divItems.forEach((d, i) => show(d, 2300 + i * 260));
+      show(closer, 2300 + divItems.length * 260 + 500);
+    },
+    reset() {
+      hideAll(notA, becoming, investor, closer);
+      notBar.style.animation = 'none'; notBar.style.transform = 'scaleX(0)';
+      divItems.forEach(d => hide(d));
+    }
+  };
+}
+
+/* ═══════════════════════════════════════════
+   SCENE MANAGEMENT
+═══════════════════════════════════════════ */
+const builders = [buildS1,buildS2,buildS3,buildS4,buildS5,buildS6,buildS7,buildS8,buildS9,buildS10,buildS11,buildS12];
+const ctrls    = builders.map((fn, i) => { const c = fn(); c.el = document.getElementById(`s${i+1}`); return c; });
+
+let current = 0;
+
+function goTo(idx) {
+  if (idx < 0 || idx >= ctrls.length) return;
+  clearAll();
+  ctrls[current].el.classList.remove('active');
+  ctrls[current].reset();
+  current = idx;
+  ctrls[current].el.classList.add('active');
+  setTimeout(() => ctrls[current].play(), 40);
+  document.getElementById('nav').textContent = `${idx + 1} / ${ctrls.length}`;
+}
+
+document.addEventListener('keydown', e => {
+  if      (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); goTo(current + 1); }
+  else if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   { e.preventDefault(); goTo(current - 1); }
+  else if (e.key === 'r' || e.key === 'R')                  { e.preventDefault(); clearAll(); ctrls[current].reset(); setTimeout(() => ctrls[current].play(), 40); }
+});
+
+goTo(0);
+</script>
+</body>
+</html>
