@@ -1,0 +1,859 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Visibility · B-Roll Suite v4</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #f7fffe;
+  --teal: #2abf9a;
+  --tl: #6ef2d2;
+  --rose: #c89a97;
+  --dark: #111;
+  --serif: 'Instrument Serif', serif;
+  --sans: 'DM Sans', sans-serif;
+}
+html, body {
+  width: 100vw; height: 100vh; overflow: hidden;
+  background: var(--bg);
+  font-family: var(--sans); color: var(--dark);
+  user-select: none; cursor: default;
+}
+.scene {
+  position: fixed; inset: 0;
+  display: flex; align-items: center; justify-content: center; flex-direction: column;
+  opacity: 0; pointer-events: none;
+  transition: opacity .3s ease;
+}
+.scene.active { opacity: 1; pointer-events: all; }
+
+@keyframes shakeIt {
+  0%,100% { transform: translateX(0) rotate(0); }
+  18%  { transform: translateX(-9px) rotate(-.6deg); }
+  36%  { transform: translateX(9px)  rotate(.6deg); }
+  54%  { transform: translateX(-6px) rotate(-.3deg); }
+  72%  { transform: translateX(6px)  rotate(.3deg); }
+  88%  { transform: translateX(-3px); }
+}
+@keyframes strikeDraw {
+  from { transform: scaleX(0); transform-origin: left; }
+  to   { transform: scaleX(1); transform-origin: left; }
+}
+@keyframes cursor {
+  0%,100% { border-right-color: var(--dark); }
+  50%     { border-right-color: transparent; }
+}
+@keyframes pulseDot {
+  0%,100% { transform: scale(1); opacity: 1; }
+  50%     { transform: scale(1.4); opacity: .7; }
+}
+
+#nav {
+  position: fixed; bottom: 22px; right: 28px;
+  font-family: var(--sans); font-size: 11px; font-weight: 500;
+  color: #ccc; letter-spacing: .1em; z-index: 9999;
+}
+</style>
+</head>
+<body>
+
+<div class="scene" id="s1"></div>
+<div class="scene" id="s2"></div>
+<div class="scene" id="s3"></div>
+<div class="scene" id="s4"></div>
+<div class="scene" id="s5"></div>
+<div class="scene" id="s6"></div>
+<div class="scene" id="s7"></div>
+<div class="scene" id="s8"></div>
+<div class="scene" id="s9"></div>
+<div class="scene" id="s10"></div>
+<div class="scene" id="s11"></div>
+<div class="scene" id="s12"></div>
+<div id="nav"></div>
+
+<script>
+/* ═══════════════════════════════════════════
+   ANIMATION ENGINE
+═══════════════════════════════════════════ */
+const TR      = 'opacity .55s cubic-bezier(.22,1,.36,1),transform .55s cubic-bezier(.22,1,.36,1)';
+const TR_SLAM = 'transform .65s cubic-bezier(.34,1.4,.64,1),opacity .38s ease';
+const TR_SLOW = 'opacity .8s cubic-bezier(.22,1,.36,1),transform .8s cubic-bezier(.22,1,.36,1)';
+const TR_FADE = 'opacity .55s ease';
+
+let timers = [], rafs = [];
+function tick(fn, ms) { const id = setTimeout(fn, ms); timers.push(id); }
+function clearAll() { timers.forEach(clearTimeout); rafs.forEach(cancelAnimationFrame); timers = []; rafs = []; }
+function reflow(el) { void el.offsetHeight; }
+
+function pflyUp(el)    { el.style.cssText += ';transition:none;opacity:0;transform:translateY(32px)'; }
+function pflyDown(el)  { el.style.cssText += ';transition:none;opacity:0;transform:translateY(-32px)'; }
+function pflyRight(el) { el.style.cssText += ';transition:none;opacity:0;transform:translateX(-65px)'; }
+function pflyLeft(el)  { el.style.cssText += ';transition:none;opacity:0;transform:translateX(65px)'; }
+function pslam(el)     { el.style.cssText += ';transition:none;opacity:0;transform:scale(2.4) translateY(-12px)'; }
+function pfade(el)     { el.style.cssText += ';transition:none;opacity:0'; }
+
+function show(el, delay, tr) {
+  tick(() => {
+    el.style.transition = tr || TR;
+    reflow(el);
+    el.style.opacity = '1';
+    el.style.transform = 'none';
+  }, delay);
+}
+function showFade(el, delay) {
+  tick(() => { el.style.transition = TR_FADE; reflow(el); el.style.opacity = '1'; }, delay);
+}
+function hide(el) { el.style.transition = 'none'; el.style.opacity = '0'; }
+function hideAll(...els) { els.forEach(hide); }
+
+function wordSpans(text, stagger, baseDelay) {
+  stagger = stagger || 80; baseDelay = baseDelay || 0;
+  return text.split(' ').map((word, i) => {
+    const s = document.createElement('span');
+    s.textContent = word;
+    s.style.display = 'inline-block';
+    s.style.marginRight = '0.28em';
+    s.style.opacity = '0';
+    s.style.transform = 'translateY(28px)';
+    const d = baseDelay + i * stagger;
+    s.style.transition = `opacity .5s cubic-bezier(.22,1,.36,1) ${d}ms,transform .5s cubic-bezier(.22,1,.36,1) ${d}ms`;
+    s._tr = s.style.transition;
+    return s;
+  });
+}
+function showWords(spans, parent) {
+  spans.forEach(s => { s.style.transition = s._tr; });
+  reflow(parent || spans[0].parentNode);
+  spans.forEach(s => { s.style.opacity = '1'; s.style.transform = 'none'; });
+}
+function hideWords(spans) {
+  spans.forEach(s => { s.style.transition = 'none'; s.style.opacity = '0'; s.style.transform = 'translateY(28px)'; });
+}
+
+function countTo(el, from, to, duration, decimals, onDone) {
+  const start = performance.now();
+  const ease  = t => 1 - Math.pow(1 - t, 3);
+  const step  = now => {
+    const p = Math.min((now - start) / duration, 1);
+    el.textContent = (from + (to - from) * ease(p)).toFixed(decimals || 0);
+    if (p < 1) { const id = requestAnimationFrame(step); rafs.push(id); }
+    else if (onDone) onDone();
+  };
+  rafs.push(requestAnimationFrame(step));
+}
+
+function el(tag, css, html) {
+  const e = document.createElement(tag);
+  if (css)  e.style.cssText = css;
+  if (html) e.innerHTML = html;
+  return e;
+}
+
+/* ═══════════════════════════════════════════
+   SCENES
+═══════════════════════════════════════════ */
+
+/* ─── S1: AI is recommending your competitors ─── */
+function buildS1() {
+  const root = document.getElementById('s1');
+  root.style.cssText = 'align-items:center;justify-content:center;text-align:center;padding:clamp(40px,6vw,80px)';
+
+  const setup = el('div',
+    'font-family:var(--sans);font-size:clamp(13px,2vw,22px);font-weight:400;color:#888;' +
+    'margin-bottom:clamp(10px,2vh,20px);max-width:580px;line-height:1.6');
+  setup.textContent = 'your ideal clients are asking AI who to hire — right now';
+
+  const aiIs = el('div',
+    'font-family:var(--serif);font-size:clamp(34px,6.5vw,86px);line-height:.95;color:var(--dark);' +
+    'margin-bottom:clamp(4px,0.8vh,10px)');
+  aiIs.textContent = 'and AI is probably';
+
+  const comp = el('div',
+    'font-family:var(--serif);font-size:clamp(56px,10vw,138px);line-height:.9;color:var(--rose)');
+  comp.textContent = 'recommending';
+
+  const comp2 = el('div',
+    'font-family:var(--serif);font-size:clamp(56px,10vw,138px);line-height:.9;color:var(--rose);' +
+    'margin-bottom:clamp(16px,3vh,36px)');
+  comp2.textContent = 'your competitors';
+
+  const fix = el('div',
+    'font-family:var(--serif);font-size:clamp(22px,4vw,52px);font-style:italic;color:var(--teal)');
+  fix.textContent = "here's how to change that.";
+
+  root.append(setup, aiIs, comp, comp2, fix);
+
+  return {
+    play() {
+      pflyDown(setup); pflyDown(aiIs); pslam(comp); pslam(comp2); pflyUp(fix);
+      show(setup, 0);
+      show(aiIs,  400);
+      show(comp,  750, TR_SLAM);
+      show(comp2, 980, TR_SLAM);
+      tick(() => {
+        comp.style.animation  = 'shakeIt .5s ease';
+        comp2.style.animation = 'shakeIt .5s ease';
+        tick(() => { comp.style.animation = ''; comp2.style.animation = ''; }, 520);
+      }, 1600);
+      show(fix, 2200);
+    },
+    reset() {
+      hideAll(setup, aiIs, comp, comp2, fix);
+      comp.style.animation = ''; comp2.style.animation = '';
+    }
+  };
+}
+
+/* ─── S2: What people are asking AI ─── */
+function buildS2() {
+  const root = document.getElementById('s2');
+  root.style.cssText = 'align-items:center;justify-content:center;padding:clamp(40px,6vw,80px);gap:clamp(10px,2vh,18px)';
+
+  const lbl = el('div',
+    'font-family:var(--sans);font-size:clamp(11px,1.5vw,14px);font-weight:600;letter-spacing:.18em;' +
+    'text-transform:uppercase;color:#aaa');
+  lbl.textContent = 'real queries people type into AI';
+
+  const QUERIES = [
+    '"Who\'s a good brand designer for coaches?"',
+    '"How do I find a copywriter for my launch?"',
+    '"What should I look for in a web designer?"',
+    '"Best SEO consultant for service businesses?"',
+  ];
+
+  const bubbles = QUERIES.map((q, i) => {
+    const wrap = el('div', 'display:flex;align-items:center;gap:12px;width:min(640px,84vw)');
+    const dot  = el('div',
+      'width:8px;height:8px;border-radius:50%;background:var(--teal);flex-shrink:0;' +
+      'animation:pulseDot 2s ease-in-out infinite');
+    dot.style.animationDelay = (i * 0.4) + 's';
+    const bubble = el('div',
+      'background:white;border-radius:12px;padding:clamp(10px,1.8vh,16px) clamp(14px,2.2vw,22px);' +
+      'font-family:var(--sans);font-size:clamp(13px,1.8vw,19px);font-weight:500;color:var(--dark);' +
+      'box-shadow:0 3px 16px rgba(0,0,0,.07);line-height:1.4;flex:1');
+    bubble.textContent = q;
+    wrap.append(dot, bubble);
+    return { wrap, dot };
+  });
+
+  bubbles.forEach(({ wrap }) => root.appendChild(wrap));
+
+  const pull = el('div',
+    'font-family:var(--serif);font-size:clamp(18px,3vw,42px);font-style:italic;color:var(--teal);' +
+    'margin-top:clamp(6px,1vh,14px)');
+  pull.textContent = 'AI is answering by pulling from websites.';
+
+  root.prepend(lbl);
+  root.appendChild(pull);
+
+  return {
+    play() {
+      pflyDown(lbl);
+      bubbles.forEach(({ wrap }) => pflyRight(wrap));
+      pflyUp(pull);
+
+      show(lbl, 0);
+      bubbles.forEach(({ wrap }, i) => show(wrap, 300 + i * 400));
+      show(pull, 300 + bubbles.length * 400 + 300);
+    },
+    reset() {
+      hide(lbl); hide(pull);
+      bubbles.forEach(({ wrap }) => hide(wrap));
+    }
+  };
+}
+
+/* ─── S3: AI bots crawl just like Google ─── */
+function buildS3() {
+  const root = document.getElementById('s3');
+  root.style.cssText = 'align-items:center;justify-content:center;text-align:center;padding:clamp(40px,6vw,80px)';
+
+  const just = el('div',
+    'font-family:var(--sans);font-size:clamp(13px,2vw,22px);font-weight:400;color:#888;margin-bottom:clamp(8px,1.5vh,16px)');
+  just.textContent = 'just like Google has spiders —';
+
+  const bots = el('div',
+    'font-family:var(--serif);font-size:clamp(52px,9.5vw,130px);line-height:.92;color:var(--dark)');
+  bots.textContent = 'AI has bots';
+
+  const crawl = el('div',
+    'font-family:var(--serif);font-size:clamp(28px,5.5vw,72px);font-style:italic;color:var(--teal);' +
+    'margin-bottom:clamp(14px,2.5vh,28px)');
+  crawl.textContent = 'doing the exact same thing';
+
+  const desc = el('div', 'max-width:580px;text-align:center');
+  const descSpans = wordSpans('reading web pages. indexing content. building the knowledge base that powers every AI response you\'ve ever gotten.', 65, 0);
+  descSpans.forEach(s => desc.appendChild(s));
+
+  const key = el('div',
+    'font-family:var(--sans);font-size:clamp(13px,1.8vw,20px);font-weight:700;color:var(--teal);' +
+    'margin-top:clamp(14px,2.5vh,28px);letter-spacing:.04em');
+  key.textContent = 'whatever Google can see → AI bots can generally reach too';
+
+  root.append(just, bots, crawl, desc, key);
+
+  return {
+    play() {
+      pflyDown(just); pslam(bots); pflyDown(crawl); hideWords(descSpans); pflyUp(key);
+      show(just, 0);
+      show(bots,  300, TR_SLAM);
+      show(crawl, 550);
+      tick(() => showWords(descSpans, desc), 1100);
+      show(key, 1100 + descSpans.length * 65 + 400);
+    },
+    reset() { hideAll(just, bots, crawl, key); hideWords(descSpans); }
+  };
+}
+
+/* ─── S4: Why AI can't read social media ─── */
+function buildS4() {
+  const root = document.getElementById('s4');
+  root.style.cssText = 'align-items:center;justify-content:center;text-align:center;padding:clamp(40px,6vw,80px)';
+
+  const q = el('div',
+    'font-family:var(--serif);font-size:clamp(24px,4.5vw,60px);font-style:italic;color:var(--dark);' +
+    'margin-bottom:clamp(14px,2.5vh,28px)');
+  q.textContent = '"but AI can just read my TikToks, right?"';
+
+  const nope = el('div',
+    'font-family:var(--serif);font-size:clamp(70px,13vw,178px);line-height:.9;color:var(--rose)');
+  nope.textContent = 'Nope.';
+
+  const barriers = el('div', 'display:flex;flex-direction:column;gap:clamp(8px,1.5vh,14px);margin-top:clamp(14px,2.5vh,28px);max-width:600px;align-items:flex-start');
+  const BARRIERS = [
+    { icon: '🔒', text: 'TikTok forces login — bots have no accounts' },
+    { icon: '📹', text: 'play video → transcribe → analyze frames → 💸 expensive' },
+    { icon: '🔒', text: 'Instagram & Facebook: most content invisible without login' },
+    { icon: '💰', text: 'Reddit now charges AI companies for API access' },
+  ];
+  const barrierEls = BARRIERS.map(({ icon, text }) => {
+    const row = el('div', 'display:flex;align-items:center;gap:12px');
+    const ic  = el('div', 'font-size:clamp(16px,2.2vw,24px);flex-shrink:0');
+    ic.textContent = icon;
+    const tx  = el('div',
+      'font-family:var(--sans);font-size:clamp(12px,1.6vw,17px);color:#666;text-align:left;line-height:1.4');
+    tx.textContent = text;
+    row.append(ic, tx);
+    barriers.appendChild(row);
+    return row;
+  });
+
+  root.append(q, nope, barriers);
+
+  return {
+    play() {
+      pflyDown(q); pslam(nope);
+      barrierEls.forEach(r => pflyRight(r));
+
+      show(q, 0);
+      show(nope, 350, TR_SLAM);
+      tick(() => {
+        nope.style.animation = 'shakeIt .4s ease';
+        tick(() => { nope.style.animation = ''; }, 420);
+      }, 950);
+      barrierEls.forEach((r, i) => show(r, 1300 + i * 300));
+    },
+    reset() {
+      hideAll(q, nope);
+      nope.style.animation = '';
+      barrierEls.forEach(r => hide(r));
+    }
+  };
+}
+
+/* ─── S5: Blog post vs TikTok (cost comparison) ─── */
+function buildS5() {
+  const root = document.getElementById('s5');
+  root.style.cssText = 'align-items:center;justify-content:center;padding:clamp(40px,6vw,80px);gap:clamp(14px,2.5vh,28px)';
+
+  const title = el('div',
+    'font-family:var(--sans);font-size:clamp(11px,1.5vw,14px);font-weight:600;letter-spacing:.18em;' +
+    'text-transform:uppercase;color:#aaa');
+  title.textContent = 'the cost to read your content';
+
+  const cols = el('div', 'display:flex;gap:clamp(16px,4vw,56px);align-items:flex-start;max-width:800px;width:100%');
+
+  const makeCol = (emoji, heading, steps, verdict, verdictCol, hCol) => {
+    const col = el('div', 'flex:1;display:flex;flex-direction:column;gap:clamp(8px,1.4vh,14px)');
+    const hdr = el('div', `font-family:var(--sans);font-size:clamp(16px,2.5vw,28px);font-weight:700;color:${hCol};margin-bottom:2px`);
+    hdr.innerHTML = `${emoji} ${heading}`;
+    col.appendChild(hdr);
+    steps.forEach(s => {
+      const row = el('div',
+        `font-family:var(--sans);font-size:clamp(11px,1.5vw,15px);color:#666;padding:clamp(7px,1.2vh,11px) clamp(10px,1.5vw,16px);` +
+        `background:white;border-radius:8px;border-left:3px solid ${hCol};line-height:1.4`);
+      row.textContent = s;
+      col.appendChild(row);
+    });
+    const verd = el('div',
+      `font-family:var(--serif);font-size:clamp(16px,2.5vw,30px);font-style:italic;color:${verdictCol};margin-top:4px`);
+    verd.textContent = verdict;
+    col.appendChild(verd);
+    return { col };
+  };
+
+  const left = makeCol('📝', 'Blog Post',
+    ['mainly text', 'structured headings', 'clear topic', 'reads in milliseconds'],
+    '→ cheap. easy. instant.', 'var(--teal)', 'var(--teal)');
+
+  const right = makeCol('📱', 'TikTok',
+    ['must access platform', 'play the video', 'transcribe the speech', 'analyze every frame', 'decode captions + hashtags'],
+    '→ enormous cost. energy. time.', 'var(--rose)', 'var(--rose)');
+
+  cols.append(left.col, right.col);
+
+  const punchline = el('div',
+    'font-family:var(--serif);font-size:clamp(20px,3.5vw,46px);font-style:italic;color:var(--dark)');
+  punchline.textContent = 'bots go where it\'s easy. and blogs are easy.';
+
+  root.append(title, cols, punchline);
+
+  return {
+    play() {
+      pflyDown(title); pflyRight(left.col); pflyLeft(right.col); pflyUp(punchline);
+      show(title, 0);
+      show(left.col,  350);
+      show(right.col, 600);
+      show(punchline, 1500);
+    },
+    reset() { hideAll(title, left.col, right.col, punchline); }
+  };
+}
+
+/* ─── S6: Your website is wide open ─── */
+function buildS6() {
+  const root = document.getElementById('s6');
+  root.style.cssText = 'align-items:center;justify-content:center;text-align:center;padding:clamp(40px,6vw,80px)';
+
+  const contrast = el('div',
+    'font-family:var(--sans);font-size:clamp(12px,1.8vw,17px);font-weight:500;letter-spacing:.15em;' +
+    'text-transform:uppercase;color:#aaa;margin-bottom:clamp(10px,2vh,20px)');
+  contrast.textContent = 'while every platform locks the door';
+
+  const site = el('div',
+    'font-family:var(--serif);font-size:clamp(52px,9.5vw,130px);line-height:.92;color:var(--dark);' +
+    'margin-bottom:clamp(8px,1.5vh,16px)');
+  site.textContent = 'your website';
+
+  const open = el('div',
+    'font-family:var(--serif);font-size:clamp(60px,11vw,152px);line-height:.9;color:var(--teal)');
+  open.textContent = 'is wide open';
+
+  const checks = el('div', 'display:flex;gap:clamp(16px,3.5vw,48px);justify-content:center;flex-wrap:wrap;margin-top:clamp(16px,3vh,36px)');
+  ['structured', 'text-based', 'easy to read', 'exactly what AI loves'].forEach(txt => {
+    const chip = el('div',
+      'font-family:var(--sans);font-size:clamp(12px,1.6vw,17px);font-weight:600;color:var(--teal);' +
+      'padding:clamp(6px,1vh,10px) clamp(12px,2vw,20px);border-radius:999px;' +
+      'background:rgba(42,191,154,.1);border:2px solid rgba(42,191,154,.3)');
+    chip.textContent = '✓ ' + txt;
+    checks.appendChild(chip);
+    pflyUp(chip);
+  });
+  const chipEls = Array.from(checks.children);
+
+  root.append(contrast, site, open, checks);
+
+  return {
+    play() {
+      pflyDown(contrast); pslam(site); pslam(open);
+      chipEls.forEach(c => pflyUp(c));
+
+      show(contrast, 0);
+      show(site,  300, TR_SLAM);
+      show(open,  520, TR_SLAM);
+      chipEls.forEach((c, i) => show(c, 1300 + i * 200));
+    },
+    reset() {
+      hideAll(contrast, site, open);
+      chipEls.forEach(c => hide(c));
+    }
+  };
+}
+
+/* ─── S7: As of 2026 — only two sources ─── */
+function buildS7() {
+  const root = document.getElementById('s7');
+  root.style.cssText = 'align-items:center;justify-content:center;text-align:center;padding:clamp(40px,6vw,80px)';
+
+  const date = el('div',
+    'font-family:var(--sans);font-size:clamp(12px,1.8vw,17px);font-weight:500;letter-spacing:.18em;' +
+    'text-transform:uppercase;color:#aaa;margin-bottom:clamp(10px,2vh,20px)');
+  date.textContent = 'as of right now in 2026';
+
+  const pulling = el('div',
+    'font-family:var(--serif);font-size:clamp(28px,5.5vw,72px);font-style:italic;color:var(--dark);' +
+    'margin-bottom:clamp(14px,2.5vh,28px)');
+  pulling.textContent = 'AI is pulling from';
+
+  const sources = el('div', 'display:flex;gap:clamp(16px,3.5vw,48px);justify-content:center;flex-wrap:wrap;margin-bottom:clamp(16px,3vh,36px)');
+  const SOURCES = [
+    { label: 'Website Content', icon: '🌐' },
+    { label: 'YouTube Transcripts', icon: '▶️' },
+  ];
+  const srcEls = SOURCES.map(({ label, icon }) => {
+    const box = el('div',
+      'background:white;border-radius:16px;padding:clamp(16px,2.8vh,26px) clamp(20px,3vw,32px);' +
+      'text-align:center;box-shadow:0 4px 20px rgba(0,0,0,.07);' +
+      'border:2px solid rgba(42,191,154,.3);min-width:clamp(130px,18vw,200px)');
+    const ic  = el('div', 'font-size:clamp(28px,4vw,48px);margin-bottom:10px');
+    ic.textContent = icon;
+    const lb  = el('div', 'font-family:var(--sans);font-size:clamp(13px,1.8vw,20px);font-weight:700;color:var(--teal)');
+    lb.textContent = label;
+    box.append(ic, lb);
+    sources.appendChild(box);
+    return box;
+  });
+
+  const thatIt = el('div',
+    'font-family:var(--serif);font-size:clamp(44px,8.5vw,116px);line-height:.92;color:var(--dark);' +
+    'margin-bottom:clamp(10px,2vh,20px)');
+  thatIt.textContent = "that's it.";
+
+  const invisible = el('div',
+    'font-family:var(--sans);font-size:clamp(13px,1.8vw,20px);color:var(--rose);font-weight:600;max-width:520px;line-height:1.6');
+  invisible.textContent = 'most service businesses have zero blog content — which means they are completely invisible to AI search';
+
+  root.append(date, pulling, sources, thatIt, invisible);
+
+  return {
+    play() {
+      pflyDown(date); pflyDown(pulling);
+      srcEls.forEach(s => pflyUp(s));
+      pslam(thatIt); pflyUp(invisible);
+
+      show(date, 0);
+      show(pulling, 300);
+      srcEls.forEach((s, i) => show(s, 800 + i * 350, TR_SLAM));
+      show(thatIt, 1700, TR_SLAM);
+      show(invisible, 2400);
+    },
+    reset() {
+      hideAll(date, pulling, thatIt, invisible);
+      srcEls.forEach(s => hide(s));
+    }
+  };
+}
+
+/* ─── S8: Three AI tools — same pattern ─── */
+function buildS8() {
+  const root = document.getElementById('s8');
+  root.style.cssText = 'align-items:center;justify-content:center;text-align:center;padding:clamp(40px,6vw,80px)';
+
+  const tools = el('div', 'display:flex;gap:clamp(12px,2.5vw,32px);justify-content:center;flex-wrap:wrap;margin-bottom:clamp(16px,3vh,36px)');
+  ['Google AI Overview', 'ChatGPT', 'Claude'].forEach(name => {
+    const chip = el('div',
+      'font-family:var(--sans);font-size:clamp(13px,1.8vw,20px);font-weight:700;color:var(--dark);' +
+      'padding:clamp(8px,1.2vh,14px) clamp(14px,2.2vw,24px);border-radius:10px;' +
+      'background:white;border:2px solid #e8e8e8;box-shadow:0 3px 14px rgba(0,0,0,.06)');
+    chip.textContent = name;
+    tools.appendChild(chip);
+    pflyDown(chip);
+  });
+  const toolEls = Array.from(tools.children);
+
+  const three = el('div',
+    'font-family:var(--serif);font-size:clamp(22px,4vw,54px);font-style:italic;color:var(--dark);' +
+    'margin-bottom:clamp(6px,1vh,12px)');
+  three.textContent = 'three tools. three interfaces.';
+
+  const same = el('div',
+    'font-family:var(--serif);font-size:clamp(52px,9.5vw,132px);line-height:.9;color:var(--teal)');
+  same.textContent = 'same pattern';
+
+  const source = el('div', 'margin-top:clamp(14px,2.5vh,28px)');
+  const sourceSpans = wordSpans('website content. blog posts. indexed pages. NOT Instagram. NOT TikTok.', 70, 0);
+  sourceSpans.forEach(s => source.appendChild(s));
+
+  const happening = el('div',
+    'font-family:var(--sans);font-size:clamp(13px,1.8vw,20px);font-weight:600;color:var(--teal);' +
+    'margin-top:clamp(14px,2.5vh,28px);letter-spacing:.04em');
+  happening.textContent = 'this is not a future thing — this is happening right now';
+
+  root.append(tools, three, same, source, happening);
+
+  return {
+    play() {
+      toolEls.forEach(c => pflyDown(c));
+      pflyDown(three); pslam(same);
+      hideWords(sourceSpans); pflyUp(happening);
+
+      toolEls.forEach((c, i) => show(c, i * 280, TR_SLAM));
+      show(three, toolEls.length * 280 + 200);
+      show(same,  toolEls.length * 280 + 500, TR_SLAM);
+      tick(() => showWords(sourceSpans, source), toolEls.length * 280 + 1100);
+      show(happening, toolEls.length * 280 + 1100 + sourceSpans.length * 70 + 400);
+    },
+    reset() {
+      hideAll(three, same, happening);
+      toolEls.forEach(c => hide(c));
+      hideWords(sourceSpans);
+    }
+  };
+}
+
+/* ─── S9: SEO compounds ─── */
+function buildS9() {
+  const root = document.getElementById('s9');
+  root.style.cssText = 'align-items:center;justify-content:center;text-align:center;padding:clamp(40px,6vw,80px)';
+
+  const lbl = el('div',
+    'font-family:var(--sans);font-size:clamp(11px,1.5vw,14px);font-weight:600;letter-spacing:.18em;' +
+    'text-transform:uppercase;color:#aaa;margin-bottom:clamp(10px,2vh,20px)');
+  lbl.textContent = "here's what IS true";
+
+  const seo = el('div',
+    'font-family:var(--serif);font-size:clamp(80px,14vw,192px);line-height:.88;color:var(--teal)');
+  seo.textContent = 'SEO';
+
+  const compounds = el('div',
+    'font-family:var(--serif);font-size:clamp(52px,9.5vw,130px);line-height:.92;color:var(--dark);' +
+    'margin-bottom:clamp(14px,2.5vh,28px)');
+  compounds.textContent = 'compounds';
+
+  const grows = el('div', 'display:flex;gap:clamp(20px,4vw,56px);justify-content:center;flex-wrap:wrap;margin-bottom:clamp(14px,2.5vh,28px)');
+  ['authority grows', 'rankings improve', 'AI visibility grows'].forEach(txt => {
+    const item = el('div',
+      'font-family:var(--sans);font-size:clamp(13px,1.8vw,20px);font-weight:500;color:var(--teal);' +
+      'border-bottom:2px solid var(--tl);padding-bottom:4px');
+    item.textContent = txt;
+    grows.appendChild(item);
+    pflyUp(item);
+  });
+  const growEls = Array.from(grows.children);
+
+  const math = el('div',
+    'font-family:var(--serif);font-size:clamp(20px,3.5vw,46px);font-style:italic;color:var(--dark)');
+  math.textContent = 'every post builds on the last.';
+
+  root.append(lbl, seo, compounds, grows, math);
+
+  return {
+    play() {
+      pflyDown(lbl); pslam(seo); pslam(compounds);
+      growEls.forEach(g => pflyUp(g));
+      pflyUp(math);
+
+      show(lbl, 0);
+      show(seo,       300, TR_SLAM);
+      show(compounds, 530, TR_SLAM);
+      growEls.forEach((g, i) => show(g, 1300 + i * 280));
+      show(math, 1300 + growEls.length * 280 + 400);
+    },
+    reset() {
+      hideAll(lbl, seo, compounds, math);
+      growEls.forEach(g => hide(g));
+    }
+  };
+}
+
+/* ─── S10: Start today vs wait two years ─── */
+function buildS10() {
+  const root = document.getElementById('s10');
+  root.style.cssText = 'align-items:center;justify-content:center;padding:clamp(40px,6vw,80px);gap:clamp(14px,2.5vh,28px)';
+
+  const title = el('div',
+    'font-family:var(--sans);font-size:clamp(11px,1.5vw,14px);font-weight:600;letter-spacing:.18em;' +
+    'text-transform:uppercase;color:#aaa');
+  title.textContent = 'two years from now';
+
+  const cols = el('div', 'display:flex;gap:clamp(16px,4vw,56px);align-items:stretch;max-width:800px;width:100%');
+
+  const makeCol = (topTxt, topCol, body, resultTxt, resultCol) => {
+    const col = el('div',
+      'flex:1;display:flex;flex-direction:column;gap:clamp(10px,1.8vh,16px);' +
+      'background:white;border-radius:16px;padding:clamp(16px,2.8vh,28px) clamp(14px,2.2vw,24px);' +
+      `box-shadow:0 4px 20px rgba(0,0,0,.06);border-top:4px solid ${topCol}`);
+    const hd = el('div', `font-family:var(--sans);font-size:clamp(13px,1.8vw,19px);font-weight:700;color:${topCol}`);
+    hd.textContent = topTxt;
+    const bd = el('div', 'font-family:var(--sans);font-size:clamp(12px,1.5vw,16px);color:#666;line-height:1.65;flex:1');
+    bd.textContent = body;
+    const rs = el('div', `font-family:var(--serif);font-size:clamp(16px,2.5vw,28px);font-style:italic;color:${resultCol}`);
+    rs.textContent = resultTxt;
+    col.append(hd, bd, rs);
+    return { col };
+  };
+
+  const left = makeCol(
+    '▶ start today',
+    'var(--teal)',
+    'Consistent authority building. Growing AI visibility. A website that generates leads while you sleep.',
+    'compounding for 2 years.'
+  );
+  const right = makeCol(
+    '⏳ wait 2 years',
+    'var(--rose)',
+    'Still starting from scratch. Watching others show up in AI answers. Wishing you had started when you first heard about this.',
+    'starting from zero.'
+  );
+
+  cols.append(left.col, right.col);
+
+  const punch = el('div',
+    'font-family:var(--serif);font-size:clamp(24px,4.5vw,60px);font-style:italic;color:var(--dark)');
+  punch.textContent = "there's no urgency trick. it's just math.";
+
+  root.append(title, cols, punch);
+
+  return {
+    play() {
+      pflyDown(title); pflyRight(left.col); pflyLeft(right.col); pflyUp(punch);
+      show(title, 0);
+      show(left.col,  350);
+      show(right.col, 600);
+      show(punch, 1500);
+    },
+    reset() { hideAll(title, left.col, right.col, punch); }
+  };
+}
+
+/* ─── S11: First lead at post 11 — slow version ─── */
+function buildS11() {
+  const root = document.getElementById('s11');
+  root.style.cssText = 'align-items:center;justify-content:center;text-align:center;padding:clamp(40px,6vw,80px)';
+
+  const lbl = el('div',
+    'font-family:var(--sans);font-size:clamp(12px,1.8vw,17px);font-weight:500;letter-spacing:.15em;' +
+    'text-transform:uppercase;color:#aaa;margin-bottom:clamp(8px,1.5vh,16px)');
+  lbl.textContent = 'one post a month. the slow version.';
+
+  const numRow = el('div', 'display:flex;align-items:flex-end;justify-content:center;gap:14px');
+  const numEl  = el('div',
+    'font-family:var(--serif);font-size:clamp(140px,24vw,320px);line-height:.88;color:var(--teal)');
+  numEl.textContent = '0';
+  const postLbl = el('div',
+    'font-family:var(--sans);font-size:clamp(18px,3vw,40px);font-weight:700;color:var(--teal);' +
+    'padding-bottom:clamp(12px,2vw,20px);letter-spacing:-.01em');
+  postLbl.textContent = 'posts';
+  numRow.append(numEl, postLbl);
+
+  const lead = el('div',
+    'font-family:var(--serif);font-size:clamp(28px,5.5vw,72px);font-style:italic;color:var(--dark);' +
+    'margin-top:clamp(10px,2vh,20px);margin-bottom:clamp(10px,2vh,20px)');
+  lead.textContent = 'first organic lead.';
+
+  const now = el('div',
+    'font-family:var(--sans);font-size:clamp(13px,1.8vw,20px);color:#888;max-width:520px;line-height:1.6');
+  now.textContent = 'now imagine starting that clock today. in 11 months you could be seeing your first lead from website content.';
+
+  const faster = el('div',
+    'font-family:var(--serif);font-size:clamp(20px,3.5vw,46px);color:var(--teal);margin-top:clamp(12px,2vh,24px);font-style:italic');
+  faster.textContent = 'the more you publish, the faster the compounding.';
+
+  root.append(lbl, numRow, lead, now, faster);
+
+  return {
+    play() {
+      pflyDown(lbl); pslam(numEl); pslam(postLbl); pflyDown(lead); pflyDown(now); pflyDown(faster);
+      numEl.textContent = '0';
+
+      show(lbl,   0);
+      show(numEl, 300, TR_SLAM);
+      show(postLbl, 480, TR_SLAM);
+      tick(() => {
+        countTo(numEl, 0, 11, 1800, 0, () => {
+          numEl.style.animation = 'shakeIt .45s ease';
+          tick(() => { numEl.style.animation = ''; }, 470);
+        });
+      }, 600);
+      show(lead,   2700);
+      show(now,    3500);
+      show(faster, 4300);
+    },
+    reset() {
+      hideAll(lbl, numEl, postLbl, lead, now, faster);
+      numEl.style.animation = '';
+      numEl.textContent = '0';
+    }
+  };
+}
+
+/* ─── S12: The only variable is when ─── */
+function buildS12() {
+  const root = document.getElementById('s12');
+  root.style.cssText = 'align-items:center;justify-content:center;text-align:center;padding:clamp(40px,6vw,80px)';
+
+  const have = el('div', 'display:flex;flex-direction:column;gap:clamp(6px,1.2vh,14px);align-items:center;margin-bottom:clamp(16px,3vh,36px)');
+  ['you already have the content', 'you already have the website'].forEach(txt => {
+    const row = el('div', 'display:flex;align-items:center;gap:14px');
+    const chk = el('div',
+      'width:clamp(22px,3vw,32px);height:clamp(22px,3vw,32px);border-radius:50%;background:var(--teal);' +
+      'display:flex;align-items:center;justify-content:center;color:white;font-size:clamp(11px,1.5vw,16px);flex-shrink:0');
+    chk.textContent = '✓';
+    const lbl = el('div', 'font-family:var(--serif);font-size:clamp(22px,4vw,52px);color:var(--dark);line-height:1');
+    lbl.textContent = txt;
+    row.append(chk, lbl);
+    have.appendChild(row);
+    pflyRight(row);
+    row._chk = chk;
+  });
+  const haveRows = Array.from(have.children);
+
+  const only = el('div',
+    'font-family:var(--sans);font-size:clamp(14px,2.2vw,26px);font-weight:400;color:#999;margin-bottom:clamp(8px,1.5vh,16px)');
+  only.textContent = 'the only variable is';
+
+  const when = el('div',
+    'font-family:var(--serif);font-size:clamp(80px,14.5vw,200px);line-height:.88;color:var(--teal)');
+  when.textContent = 'WHEN';
+
+  const closing = el('div',
+    'font-family:var(--sans);font-size:clamp(13px,1.8vw,20px);color:#888;margin-top:clamp(14px,2.5vh,28px);' +
+    'max-width:500px;line-height:1.6');
+  closing.textContent = 'every week you wait is a week of compounding you don\'t get back';
+
+  root.append(have, only, when, closing);
+
+  return {
+    play() {
+      haveRows.forEach(r => { pflyRight(r); hide(r._chk); });
+      pflyDown(only); pslam(when); pflyUp(closing);
+
+      haveRows.forEach((r, i) => {
+        show(r, i * 380);
+        tick(() => { r._chk.style.transition = TR_FADE; reflow(r._chk); r._chk.style.opacity = '1'; }, i * 380 + 100);
+      });
+      show(only, haveRows.length * 380 + 200);
+      show(when,    haveRows.length * 380 + 500, TR_SLAM);
+      show(closing, haveRows.length * 380 + 1300);
+    },
+    reset() {
+      hide(only); hide(when); hide(closing);
+      haveRows.forEach(r => { hide(r); hide(r._chk); });
+    }
+  };
+}
+
+/* ═══════════════════════════════════════════
+   SCENE MANAGEMENT
+═══════════════════════════════════════════ */
+const builders = [buildS1,buildS2,buildS3,buildS4,buildS5,buildS6,buildS7,buildS8,buildS9,buildS10,buildS11,buildS12];
+const ctrls    = builders.map((fn, i) => { const c = fn(); c.el = document.getElementById(`s${i+1}`); return c; });
+
+let current = 0;
+
+function goTo(idx) {
+  if (idx < 0 || idx >= ctrls.length) return;
+  clearAll();
+  ctrls[current].el.classList.remove('active');
+  ctrls[current].reset();
+  current = idx;
+  ctrls[current].el.classList.add('active');
+  setTimeout(() => ctrls[current].play(), 40);
+  document.getElementById('nav').textContent = `${idx + 1} / ${ctrls.length}`;
+}
+
+document.addEventListener('keydown', e => {
+  if      (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); goTo(current + 1); }
+  else if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   { e.preventDefault(); goTo(current - 1); }
+  else if (e.key === 'r' || e.key === 'R')                  { e.preventDefault(); clearAll(); ctrls[current].reset(); setTimeout(() => ctrls[current].play(), 40); }
+});
+
+goTo(0);
+</script>
+</body>
+</html>
