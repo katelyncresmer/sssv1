@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SSS V5 B-Roll</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden;background:#f7fffe}
+body{font-family:'DM Sans',sans-serif;color:#1a1a2e}
+
+.scene{
+  position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+  opacity:0;pointer-events:none;
+}
+.scene.active{opacity:1;pointer-events:auto}
+
+#nav{
+  position:fixed;bottom:28px;right:36px;font-family:'DM Sans',sans-serif;
+  font-size:13px;font-weight:500;color:#aaa;z-index:999;letter-spacing:.04em;
+}
+
+/* ── shared typography ── */
+.serif{font-family:'Instrument Serif',serif}
+.teal{color:#2abf9a}
+.teal2{color:#6ef2d2}
+.rose{color:#c89a97}
+.dim{color:#888}
+
+/* ── bars ── */
+.bar-wrap{width:100%;display:flex;align-items:center;gap:16px;margin:10px 0}
+.bar-track{flex:1;height:14px;background:#e8f5f1;border-radius:99px;overflow:hidden}
+.bar-fill{height:100%;width:0;border-radius:99px;transition:width 1.3s cubic-bezier(.22,1,.36,1)}
+
+/* ── step chain ── */
+.step-row{display:flex;align-items:center;gap:14px;margin:10px 0;opacity:0;transform:translateX(-50px)}
+
+/* ── two-col ── */
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:48px;width:90%;max-width:900px}
+.col-box{display:flex;flex-direction:column;align-items:center;text-align:center;gap:12px}
+
+/* ── bubble list ── */
+.bubble{
+  display:inline-block;padding:10px 22px;border-radius:99px;
+  border:2px solid #2abf9a;color:#1a1a2e;font-size:1rem;font-weight:500;
+  opacity:0;transform:translateY(20px);
+}
+
+/* ── underline draw ── */
+.u-line{
+  display:block;height:4px;background:#2abf9a;border-radius:2px;
+  width:0;transition:width 1s cubic-bezier(.22,1,.36,1);
+  margin-top:4px;
+}
+
+/* ── strikethrough ── */
+.strike-wrap{position:relative;display:inline-block}
+.strike-line{
+  position:absolute;left:0;top:50%;transform:translateY(-50%) scaleX(0);
+  transform-origin:left;width:100%;height:4px;background:#c89a97;border-radius:2px;
+}
+@keyframes strikeDraw{to{transform:translateY(-50%) scaleX(1)}}
+
+/* ── checklist ── */
+.check-row{display:flex;align-items:center;gap:14px;margin:8px 0;opacity:0;transform:translateY(18px)}
+.check-icon{width:32px;height:32px;border-radius:50%;background:#2abf9a;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.check-icon svg{width:16px;height:16px;stroke:#fff;stroke-width:2.5;fill:none}
+
+/* ── cursor blink ── */
+@keyframes cursor{0%,100%{opacity:1}50%{opacity:0}}
+.cursor{display:inline-block;width:3px;height:1em;background:#2abf9a;vertical-align:middle;margin-left:4px;animation:cursor 1s infinite}
+
+/* ── glow dot ── */
+.dot{
+  width:14px;height:14px;border-radius:50%;background:#2abf9a;
+  flex-shrink:0;box-shadow:0 0 10px #2abf9a88;
+}
+
+/* ── big number ── */
+.num-giant{
+  font-family:'Instrument Serif',serif;font-size:clamp(120px,18vw,200px);
+  line-height:1;color:#2abf9a;
+}
+
+/* ── phone frame ── */
+.phone{
+  width:160px;height:280px;border:4px solid #2abf9a;border-radius:24px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:10px;background:#fff;flex-shrink:0;
+}
+
+/* ── arrow ── */
+.arrow-right{
+  font-size:2.5rem;color:#2abf9a;opacity:0;
+  transform:translateX(-20px);
+}
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════
+     SCENE 1 — Everything is already on your phone
+     ══════════════════════════════════ -->
+<div class="scene" id="s1">
+  <div style="text-align:center;max-width:780px;padding:0 40px">
+    <div id="s1-pre" style="font-size:1.1rem;font-weight:500;color:#888;letter-spacing:.08em;text-transform:uppercase;opacity:0">Everything you need to</div>
+    <div id="s1-head" style="margin:10px 0" class="serif"></div>
+    <div style="margin-top:28px;display:flex;gap:32px;justify-content:center;align-items:center">
+      <div id="s1-t1" class="bubble">Your TikToks</div>
+      <div id="s1-t2" class="bubble">Your Carousels</div>
+      <div id="s1-t3" class="bubble">Your IG Posts</div>
+    </div>
+    <div id="s1-arrow" style="margin-top:36px;font-size:1.1rem;font-weight:500;color:#2abf9a;opacity:0">is already sitting on your phone</div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     SCENE 2 — Social → Search Strategy
+     ══════════════════════════════════ -->
+<div class="scene" id="s2">
+  <div style="text-align:center;max-width:820px;padding:0 40px">
+    <div id="s2-label" style="font-size:1rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#888;opacity:0">Introducing</div>
+    <div id="s2-head" style="margin:14px 0;font-size:clamp(38px,6vw,72px);font-weight:700;line-height:1.1">
+      <span class="serif teal" id="s2-social" style="opacity:0;display:inline-block;transform:scale(2.4) translateY(-12px)">Social</span>
+      <span id="s2-arrow" style="opacity:0;font-size:0.9em;margin:0 12px">→</span>
+      <span class="serif" id="s2-search" style="opacity:0;display:inline-block;transform:scale(2.4) translateY(-12px)">Search</span>
+    </div>
+    <div id="s2-sub" style="font-size:1.15rem;font-weight:400;color:#555;max-width:580px;margin:0 auto;opacity:0;transform:translateY(22px)">
+      A repurposing workflow with <strong style="color:#2abf9a">one extra direction.</strong><br>
+      You already create content. You already have a website.<br>This system finally connects the two.
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     SCENE 3 — Five Steps Overview
+     ══════════════════════════════════ -->
+<div class="scene" id="s3">
+  <div style="width:90%;max-width:780px">
+    <div id="s3-head" style="font-size:clamp(22px,3.5vw,40px);font-weight:700;margin-bottom:36px;opacity:0;transform:translateY(28px)">
+      Five steps. <span class="teal">Repeatable. Buildable.</span>
+    </div>
+    <div class="step-row" id="s3-r1">
+      <div class="dot"></div>
+      <div style="font-size:1.25rem;font-weight:600">Step 1 <span class="dim" style="font-weight:400">— Content Audit</span></div>
+    </div>
+    <div class="step-row" id="s3-r2">
+      <div class="dot"></div>
+      <div style="font-size:1.25rem;font-weight:600">Step 2 <span class="dim" style="font-weight:400">— Keyword Research</span></div>
+    </div>
+    <div class="step-row" id="s3-r3">
+      <div class="dot"></div>
+      <div style="font-size:1.25rem;font-weight:600">Step 3 <span class="dim" style="font-weight:400">— Brief &amp; Outline</span></div>
+    </div>
+    <div class="step-row" id="s3-r4">
+      <div class="dot"></div>
+      <div style="font-size:1.25rem;font-weight:600">Step 4 <span class="dim" style="font-weight:400">— Write the Article</span></div>
+    </div>
+    <div class="step-row" id="s3-r5">
+      <div class="dot"></div>
+      <div style="font-size:1.25rem;font-weight:600">Step 5 <span class="dim" style="font-weight:400">— Optimize, Publish &amp; Submit</span></div>
+    </div>
+    <div id="s3-cta" style="margin-top:36px;padding:18px 32px;background:#2abf9a;color:#fff;font-size:1.1rem;font-weight:600;border-radius:12px;text-align:center;opacity:0;transform:translateY(24px)">
+      That's the whole system.
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     SCENE 4 — Step 1: Content Audit
+     ══════════════════════════════════ -->
+<div class="scene" id="s4">
+  <div style="text-align:center;max-width:820px;padding:0 40px">
+    <div id="s4-step" style="font-size:1rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#2abf9a;opacity:0">Step One</div>
+    <div id="s4-title" style="font-size:clamp(42px,7vw,88px);font-weight:700;margin:10px 0;opacity:0;transform:translateY(28px)">
+      Content<br><span class="serif teal">Audit</span>
+    </div>
+    <div id="s4-sub" style="font-size:1.1rem;color:#555;max-width:600px;margin:0 auto;opacity:0;transform:translateY(20px)">
+      Dig through your social archive.<br>Find the posts worth going deeper on.
+    </div>
+    <div style="margin-top:32px;display:flex;gap:20px;justify-content:center;flex-wrap:wrap">
+      <div id="s4-b1" class="bubble" style="border-color:#c89a97;color:#c89a97">Posts that did well</div>
+      <div id="s4-b2" class="bubble" style="border-color:#2abf9a">Topics to go deeper</div>
+      <div id="s4-b3" class="bubble" style="border-color:#6ef2d2;color:#1a8a72">Series to combine</div>
+    </div>
+    <div id="s4-bonus" style="margin-top:28px;font-size:1rem;font-weight:500;color:#2abf9a;opacity:0;transform:translateY(18px)">
+      ✦ Embed your original posts directly in the blog — Google loves interactivity
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     SCENE 5 — Step 2: Keyword Research
+     ══════════════════════════════════ -->
+<div class="scene" id="s5">
+  <div style="text-align:center;max-width:820px;padding:0 40px">
+    <div id="s5-step" style="font-size:1rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#2abf9a;opacity:0">Step Two</div>
+    <div id="s5-title" style="font-size:clamp(42px,7vw,88px);font-weight:700;margin:10px 0;opacity:0;transform:translateY(28px)">
+      Keyword<br><span class="serif teal">Research</span>
+    </div>
+    <div id="s5-rule" style="margin:24px auto;max-width:580px">
+      <div id="s5-box" style="border:3px solid #2abf9a;border-radius:16px;padding:28px 32px;opacity:0;transform:translateY(22px)">
+        <div style="font-size:clamp(48px,7vw,80px);font-weight:700;font-family:'Instrument Serif',serif;color:#2abf9a;line-height:1">1</div>
+        <div style="font-size:1.2rem;font-weight:500;margin-top:8px">main keyword</div>
+        <div style="font-size:1rem;color:#888;margin-top:6px">per article</div>
+      </div>
+    </div>
+    <div id="s5-sub" style="font-size:1.05rem;color:#555;opacity:0;transform:translateY(18px)">
+      The exact phrase your ideal client types into Google.<br>
+      <span class="teal" style="font-weight:600">No enterprise SEO required.</span>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     SCENE 6 — Step 3: Brief & Outline
+     ══════════════════════════════════ -->
+<div class="scene" id="s6">
+  <div style="width:90%;max-width:820px">
+    <div id="s6-step" style="font-size:1rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#2abf9a;opacity:0">Step Three</div>
+    <div id="s6-title" style="font-size:clamp(36px,5.5vw,72px);font-weight:700;margin:10px 0 32px;opacity:0;transform:translateY(28px)">
+      Brief &amp; <span class="serif teal">Outline</span>
+    </div>
+    <div class="check-row" id="s6-c1">
+      <div class="check-icon"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>
+      <div style="font-size:1.1rem">Find articles already ranking for your keyword</div>
+    </div>
+    <div class="check-row" id="s6-c2">
+      <div class="check-icon"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>
+      <div style="font-size:1.1rem">Pull <span class="teal" style="font-weight:600">your specific expertise</span> from your social content</div>
+    </div>
+    <div class="check-row" id="s6-c3">
+      <div class="check-icon"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>
+      <div style="font-size:1.1rem">Build your outline — never stare at a blank page again</div>
+    </div>
+    <div id="s6-diff" style="margin-top:32px;padding:20px 28px;border-left:4px solid #c89a97;background:#fdf5f4;opacity:0;transform:translateY(20px)">
+      <div style="font-size:1rem;font-weight:600;color:#c89a97;margin-bottom:6px">Your differentiator</div>
+      <div style="font-size:1.05rem;color:#444">Your insights + your takes = better than the generic stuff already out there</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     SCENE 7 — Step 4: Write the Article
+     ══════════════════════════════════ -->
+<div class="scene" id="s7">
+  <div style="text-align:center;max-width:820px;padding:0 40px">
+    <div id="s7-step" style="font-size:1rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#2abf9a;opacity:0">Step Four</div>
+    <div id="s7-title" style="font-size:clamp(42px,7vw,88px);font-weight:700;margin:10px 0 32px;opacity:0;transform:translateY(28px)">
+      Write the <span class="serif teal">Article</span>
+    </div>
+    <div class="two-col" style="max-width:720px;margin:0 auto">
+      <div id="s7-col1" class="col-box" style="opacity:0;transform:translateY(28px)">
+        <div style="font-size:2.5rem">🤖</div>
+        <div style="font-size:1.1rem;font-weight:700">Use AI</div>
+        <div style="font-size:.95rem;color:#666;line-height:1.5">A real workflow that sounds like <em>you</em>, covers your topic, and helps you appear in Google</div>
+      </div>
+      <div id="s7-col2" class="col-box" style="opacity:0;transform:translateY(28px)">
+        <div style="font-size:2.5rem">✍️</div>
+        <div style="font-size:1.1rem;font-weight:700">Outsource it</div>
+        <div style="font-size:.95rem;color:#666;line-height:1.5">One of the easiest things to delegate — find a writer who understands SEO</div>
+      </div>
+    </div>
+    <div id="s7-bottom" style="margin-top:36px;font-size:1.1rem;font-weight:500;color:#2abf9a;opacity:0;transform:translateY(18px)">
+      The article practically writes itself — you have your outline, your social content, your tools.
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     SCENE 8 — Step 5: Optimize, Publish, Submit
+     ══════════════════════════════════ -->
+<div class="scene" id="s8">
+  <div style="width:90%;max-width:820px">
+    <div id="s8-step" style="font-size:1rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#2abf9a;opacity:0">Step Five</div>
+    <div id="s8-title" style="font-size:clamp(28px,4.5vw,58px);font-weight:700;margin:10px 0 30px;opacity:0;transform:translateY(28px)">
+      Optimize. Publish. <span class="serif teal">Submit.</span>
+    </div>
+    <div class="check-row" id="s8-c1">
+      <div class="check-icon"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>
+      <div style="font-size:1.05rem">Run the SEO checklist + editing checklist</div>
+    </div>
+    <div class="check-row" id="s8-c2">
+      <div class="check-icon"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>
+      <div style="font-size:1.05rem">Publish the best possible version of the article</div>
+    </div>
+    <div class="check-row" id="s8-c3">
+      <div class="check-icon" style="background:#c89a97"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>
+      <div style="font-size:1.05rem"><strong>The cheat code:</strong> Request indexing in Google Search Console</div>
+    </div>
+    <div id="s8-console" style="margin-top:28px;background:#1a1a2e;border-radius:14px;padding:22px 28px;color:#6ef2d2;font-family:monospace;font-size:1rem;opacity:0;transform:translateY(22px)">
+      <span style="color:#888">Google Search Console &gt; </span>
+      <span id="s8-type"></span><span class="cursor" id="s8-cursor" style="display:none"></span>
+    </div>
+    <div id="s8-result" style="margin-top:16px;font-size:1rem;color:#2abf9a;font-weight:500;opacity:0;transform:translateY(14px)">
+      Tap Google on the shoulder → "Hey, I made this. Come look."
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     SCENE 9 — Every step has a template
+     ══════════════════════════════════ -->
+<div class="scene" id="s9">
+  <div style="text-align:center;max-width:820px;padding:0 40px">
+    <div id="s9-head" style="font-size:clamp(28px,4.5vw,58px);font-weight:700;margin-bottom:40px;opacity:0;transform:translateY(28px)">
+      Every single step has a<br><span class="serif teal">template, checklist, or training.</span>
+    </div>
+    <div style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap">
+      <div id="s9-t1" class="bubble" style="border-color:#2abf9a;color:#2abf9a">📋 Templates</div>
+      <div id="s9-t2" class="bubble" style="border-color:#c89a97;color:#c89a97">✅ Checklists</div>
+      <div id="s9-t3" class="bubble" style="border-color:#6ef2d2;color:#1a8a72">🎓 Trainings</div>
+      <div id="s9-t4" class="bubble" style="border-color:#888;color:#555">🔑 Keyword Tracker</div>
+    </div>
+    <div id="s9-bottom" style="margin-top:40px;font-size:1.3rem;font-weight:600;color:#1a1a2e;opacity:0;transform:translateY(20px)">
+      You are <span class="rose">not</span> figuring this out alone.
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     SCENE 10 — Six months from now
+     ══════════════════════════════════ -->
+<div class="scene" id="s10">
+  <div style="text-align:center;max-width:820px;padding:0 40px">
+    <div id="s10-pre" style="font-size:1rem;font-weight:500;color:#888;letter-spacing:.08em;text-transform:uppercase;opacity:0">Picture this</div>
+    <div id="s10-head" style="font-size:clamp(32px,5vw,64px);font-weight:700;margin:14px 0;opacity:0;transform:translateY(28px)">
+      Six months from now
+    </div>
+    <div id="s10-stats" style="display:flex;flex-direction:column;gap:14px;max-width:640px;margin:32px auto 0">
+      <div class="check-row" id="s10-c1">
+        <div class="check-icon"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>
+        <div style="font-size:1.05rem">Articles showing up in Google Search Console</div>
+      </div>
+      <div class="check-row" id="s10-c2">
+        <div class="check-icon"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>
+        <div style="font-size:1.05rem">People finding your website without you posting that day</div>
+      </div>
+      <div class="check-row" id="s10-c3">
+        <div class="check-icon" style="background:#c89a97"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>
+        <div style="font-size:1.05rem"><strong>AI recommends your blog post</strong> to your exact ideal client</div>
+      </div>
+    </div>
+    <div id="s10-coda" style="margin-top:36px;font-size:1.1rem;color:#555;opacity:0;transform:translateY(18px)">
+      Built from content that was <span class="rose">sitting on your profile collecting dust.</span>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     SCENE 11 — Visibility asset
+     ══════════════════════════════════ -->
+<div class="scene" id="s11">
+  <div style="text-align:center;max-width:820px;padding:0 40px">
+    <div id="s11-not" style="font-size:1rem;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.08em;opacity:0">You're not becoming a blogger.</div>
+    <div id="s11-head" style="margin:18px 0;font-size:clamp(30px,5vw,62px);font-weight:700;line-height:1.15;opacity:0;transform:translateY(28px)">
+      You're becoming a business owner<br>with a <span class="serif teal">visibility asset</span><br>nobody can take away.
+    </div>
+    <div style="display:flex;gap:32px;justify-content:center;margin-top:36px">
+      <div id="s11-p1" style="text-align:center;opacity:0;transform:translateY(22px)">
+        <div style="font-size:2rem;margin-bottom:6px">🌙</div>
+        <div style="font-size:.95rem;font-weight:600">Grows while you sleep</div>
+      </div>
+      <div id="s11-p2" style="text-align:center;opacity:0;transform:translateY(22px)">
+        <div style="font-size:2rem;margin-bottom:6px">📅</div>
+        <div style="font-size:.95rem;font-weight:600">Works while you're with clients</div>
+      </div>
+      <div id="s11-p3" style="text-align:center;opacity:0;transform:translateY(22px)">
+        <div style="font-size:2rem;margin-bottom:6px">📈</div>
+        <div style="font-size:.95rem;font-weight:600">Compounds every month</div>
+      </div>
+    </div>
+    <div id="s11-coda" style="margin-top:40px;font-size:1.15rem;font-weight:500;color:#2abf9a;opacity:0;transform:translateY(18px)">
+      Whether you post on social or not.
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     SCENE 12 — The Social → Search Sync offer
+     ══════════════════════════════════ -->
+<div class="scene" id="s12">
+  <div style="text-align:center;max-width:820px;padding:0 40px">
+    <div id="s12-label" style="font-size:1rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#888;opacity:0">The offer</div>
+    <div id="s12-head" style="margin:12px 0 8px;font-size:clamp(32px,5vw,62px);font-weight:700;opacity:0;transform:scale(2.4) translateY(-12px)">
+      Social <span class="teal">→</span> Search Sync
+    </div>
+    <div id="s12-sub" style="font-size:1rem;color:#666;margin-bottom:28px;opacity:0;transform:translateY(18px)">
+      Mini course · Coworking sessions · AI tools · Checklists · Community
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;max-width:660px;margin:0 auto">
+      <div id="s12-f1" class="bubble" style="border-radius:12px;padding:14px 18px;text-align:left;border-color:#2abf9a">📖 Step-by-step mini course</div>
+      <div id="s12-f2" class="bubble" style="border-radius:12px;padding:14px 18px;text-align:left;border-color:#c89a97;color:#c89a97">💻 Weekly coworking sessions</div>
+      <div id="s12-f3" class="bubble" style="border-radius:12px;padding:14px 18px;text-align:left;border-color:#6ef2d2;color:#1a8a72">🤖 AI writing workflow training</div>
+      <div id="s12-f4" class="bubble" style="border-radius:12px;padding:14px 18px;text-align:left;border-color:#888;color:#555">👥 Community of service businesses</div>
+    </div>
+    <div id="s12-cta" style="margin-top:32px;background:#2abf9a;color:#fff;padding:18px 40px;border-radius:12px;font-size:1.1rem;font-weight:700;display:inline-block;opacity:0;transform:translateY(22px)">
+      Free trial · Join this week · First article outlined by month's end
+    </div>
+  </div>
+</div>
+
+<div id="nav">1 / 12</div>
+
+<script>
+const TR      = 'opacity .55s cubic-bezier(.22,1,.36,1),transform .55s cubic-bezier(.22,1,.36,1)';
+const TR_SLAM = 'transform .65s cubic-bezier(.34,1.4,.64,1),opacity .38s ease';
+const TR_FADE = 'opacity .55s ease';
+
+let timers = [], rafs = [];
+function tick(fn, ms){ const id = setTimeout(fn, ms); timers.push(id); return id; }
+function clearAll(){ timers.forEach(clearTimeout); rafs.forEach(cancelAnimationFrame); timers=[]; rafs=[]; }
+function reflow(el){ void el.offsetHeight; }
+
+function pflyUp(el)   { el.style.cssText += ';transition:none;opacity:0;transform:translateY(32px)'; }
+function pflyDown(el) { el.style.cssText += ';transition:none;opacity:0;transform:translateY(-32px)'; }
+function pflyRight(el){ el.style.cssText += ';transition:none;opacity:0;transform:translateX(-65px)'; }
+function pslam(el)    { el.style.cssText += ';transition:none;opacity:0;transform:scale(2.4) translateY(-12px)'; }
+function pfade(el)    { el.style.cssText += ';transition:none;opacity:0'; }
+
+function show(el, delay, tr){
+  tick(() => {
+    el.style.transition = tr || TR;
+    reflow(el);
+    el.style.opacity = '1';
+    el.style.transform = 'none';
+  }, delay);
+}
+function showFade(el, delay){
+  tick(() => { el.style.transition = TR_FADE; reflow(el); el.style.opacity = '1'; }, delay);
+}
+function hide(el){ el.style.transition = 'none'; el.style.opacity = '0'; }
+function hideAll(...els){ els.forEach(hide); }
+
+function wordSpans(text, stagger, baseDelay){
+  stagger = stagger || 80; baseDelay = baseDelay || 0;
+  return text.split(' ').map((word, i) => {
+    const s = document.createElement('span');
+    s.textContent = word;
+    s.style.display = 'inline-block';
+    s.style.marginRight = '0.28em';
+    s.style.opacity = '0';
+    s.style.transform = 'translateY(28px)';
+    const d = baseDelay + i * stagger;
+    s.style.transition = `opacity .5s cubic-bezier(.22,1,.36,1) ${d}ms,transform .5s cubic-bezier(.22,1,.36,1) ${d}ms`;
+    s._tr = s.style.transition;
+    return s;
+  });
+}
+function showWords(spans, parent){
+  spans.forEach(s => { s.style.transition = s._tr; });
+  reflow(parent || spans[0].parentNode);
+  spans.forEach(s => { s.style.opacity='1'; s.style.transform='none'; });
+}
+function hideWords(spans){
+  spans.forEach(s => { s.style.transition='none'; s.style.opacity='0'; s.style.transform='translateY(28px)'; });
+}
+
+function countTo(el, from, to, duration, decimals, onDone){
+  const start = performance.now();
+  const ease  = t => 1 - Math.pow(1-t, 3);
+  const step  = now => {
+    const p = Math.min((now-start)/duration, 1);
+    el.textContent = (from + (to-from)*ease(p)).toFixed(decimals||0);
+    if(p < 1){ const id = requestAnimationFrame(step); rafs.push(id); }
+    else if(onDone) onDone();
+  };
+  rafs.push(requestAnimationFrame(step));
+}
+
+function typeText(el, text, speed, delay, onDone){
+  tick(() => {
+    let i = 0;
+    const cursor = document.getElementById('s8-cursor');
+    if(cursor) cursor.style.display = 'inline-block';
+    const id = setInterval(() => {
+      el.textContent = text.slice(0, ++i);
+      if(i >= text.length){
+        clearInterval(id);
+        if(cursor) setTimeout(() => { cursor.style.display='none'; }, 800);
+        if(onDone) onDone();
+      }
+    }, speed);
+    timers.push(id);
+  }, delay);
+}
+
+function animStep(el, delay){
+  tick(() => {
+    el.style.transition = TR;
+    reflow(el);
+    el.style.opacity = '1';
+    el.style.transform = 'none';
+  }, delay);
+}
+
+// ── Bubble show helper ──
+function showBubble(el, delay){
+  tick(() => {
+    el.style.transition = TR;
+    reflow(el);
+    el.style.opacity = '1';
+    el.style.transform = 'none';
+  }, delay);
+}
+
+// ── Scene word refs ──
+let s1HeadSpans = [];
+
+const ctrls = [
+
+  // ── S1 ──
+  { el: document.getElementById('s1'),
+    play(){
+      const pre   = document.getElementById('s1-pre');
+      const head  = document.getElementById('s1-head');
+      const arrow = document.getElementById('s1-arrow');
+
+      s1HeadSpans = wordSpans('get found on Google is already on your phone.', 90, 0);
+      const big = document.createElement('div');
+      big.style.cssText = 'font-size:clamp(32px,5.5vw,68px);font-weight:700;line-height:1.2;font-family:"Instrument Serif",serif;text-align:center';
+      s1HeadSpans.forEach(s => big.appendChild(s));
+      head.innerHTML = '';
+      head.appendChild(big);
+
+      showFade(pre, 100);
+      tick(() => showWords(s1HeadSpans, big), 500);
+
+      const b1 = document.getElementById('s1-t1');
+      const b2 = document.getElementById('s1-t2');
+      const b3 = document.getElementById('s1-t3');
+      [b1,b2,b3].forEach(b => { b.style.transition='none'; b.style.opacity='0'; b.style.transform='translateY(20px)'; });
+      showBubble(b1, 1200);
+      showBubble(b2, 1450);
+      showBubble(b3, 1700);
+      showFade(arrow, 2200);
+    },
+    reset(){
+      hideAll(document.getElementById('s1-pre'), document.getElementById('s1-arrow'),
+              document.getElementById('s1-t1'), document.getElementById('s1-t2'), document.getElementById('s1-t3'));
+      hideWords(s1HeadSpans);
+    }
+  },
+
+  // ── S2 ──
+  { el: document.getElementById('s2'),
+    play(){
+      const label  = document.getElementById('s2-label');
+      const social = document.getElementById('s2-social');
+      const arr    = document.getElementById('s2-arrow');
+      const search = document.getElementById('s2-search');
+      const sub    = document.getElementById('s2-sub');
+
+      showFade(label, 100);
+      show(social, 500, TR_SLAM);
+      showFade(arr, 900);
+      show(search, 1100, TR_SLAM);
+      show(sub, 1700);
+    },
+    reset(){
+      const label  = document.getElementById('s2-label');
+      const social = document.getElementById('s2-social');
+      const arr    = document.getElementById('s2-arrow');
+      const search = document.getElementById('s2-search');
+      const sub    = document.getElementById('s2-sub');
+      [label,arr,sub].forEach(hide);
+      [social,search].forEach(el => { el.style.transition='none'; el.style.opacity='0'; el.style.transform='scale(2.4) translateY(-12px)'; });
+    }
+  },
+
+  // ── S3 ──
+  { el: document.getElementById('s3'),
+    play(){
+      const head = document.getElementById('s3-head');
+      const rows = ['s3-r1','s3-r2','s3-r3','s3-r4','s3-r5'].map(id => document.getElementById(id));
+      const cta  = document.getElementById('s3-cta');
+
+      show(head, 100);
+      rows.forEach((r, i) => {
+        tick(() => {
+          r.style.transition = TR;
+          reflow(r);
+          r.style.opacity = '1';
+          r.style.transform = 'none';
+        }, 600 + i * 220);
+      });
+      show(cta, 600 + 5*220 + 200);
+    },
+    reset(){
+      const head = document.getElementById('s3-head');
+      const rows = ['s3-r1','s3-r2','s3-r3','s3-r4','s3-r5'].map(id => document.getElementById(id));
+      const cta  = document.getElementById('s3-cta');
+      hide(head); hide(cta);
+      rows.forEach(r => { r.style.transition='none'; r.style.opacity='0'; r.style.transform='translateX(-50px)'; });
+    }
+  },
+
+  // ── S4 ──
+  { el: document.getElementById('s4'),
+    play(){
+      const step   = document.getElementById('s4-step');
+      const title  = document.getElementById('s4-title');
+      const sub    = document.getElementById('s4-sub');
+      const b1     = document.getElementById('s4-b1');
+      const b2     = document.getElementById('s4-b2');
+      const b3     = document.getElementById('s4-b3');
+      const bonus  = document.getElementById('s4-bonus');
+
+      showFade(step, 100);
+      show(title, 400);
+      show(sub, 900);
+      showBubble(b1, 1300);
+      showBubble(b2, 1550);
+      showBubble(b3, 1800);
+      show(bonus, 2300);
+    },
+    reset(){
+      ['s4-step','s4-title','s4-sub','s4-b1','s4-b2','s4-b3','s4-bonus'].forEach(id => {
+        const el = document.getElementById(id);
+        if(id==='s4-title') { el.style.transition='none'; el.style.opacity='0'; el.style.transform='translateY(28px)'; }
+        else if(['s4-b1','s4-b2','s4-b3'].includes(id)) { el.style.transition='none'; el.style.opacity='0'; el.style.transform='translateY(20px)'; }
+        else hide(el);
+      });
+      ['s4-sub','s4-bonus'].forEach(id => { const el=document.getElementById(id); el.style.transition='none'; el.style.opacity='0'; el.style.transform='translateY(20px)'; });
+    }
+  },
+
+  // ── S5 ──
+  { el: document.getElementById('s5'),
+    play(){
+      const step = document.getElementById('s5-step');
+      const title= document.getElementById('s5-title');
+      const box  = document.getElementById('s5-box');
+      const sub  = document.getElementById('s5-sub');
+
+      showFade(step, 100);
+      show(title, 400);
+      show(box, 900);
+      show(sub, 1500);
+    },
+    reset(){
+      hide(document.getElementById('s5-step'));
+      ['s5-title','s5-box','s5-sub'].forEach(id => {
+        const el = document.getElementById(id);
+        el.style.transition='none'; el.style.opacity='0'; el.style.transform='translateY(28px)';
+      });
+    }
+  },
+
+  // ── S6 ──
+  { el: document.getElementById('s6'),
+    play(){
+      const step = document.getElementById('s6-step');
+      const title= document.getElementById('s6-title');
+      const checks = ['s6-c1','s6-c2','s6-c3'].map(id => document.getElementById(id));
+      const diff = document.getElementById('s6-diff');
+
+      showFade(step, 100);
+      show(title, 400);
+      checks.forEach((c, i) => {
+        tick(() => {
+          c.style.transition = TR;
+          reflow(c);
+          c.style.opacity='1'; c.style.transform='none';
+        }, 900 + i*280);
+      });
+      show(diff, 900 + 3*280 + 200);
+    },
+    reset(){
+      hide(document.getElementById('s6-step'));
+      const title = document.getElementById('s6-title');
+      title.style.transition='none'; title.style.opacity='0'; title.style.transform='translateY(28px)';
+      ['s6-c1','s6-c2','s6-c3'].forEach(id => {
+        const el = document.getElementById(id);
+        el.style.transition='none'; el.style.opacity='0'; el.style.transform='translateY(18px)';
+      });
+      const diff = document.getElementById('s6-diff');
+      diff.style.transition='none'; diff.style.opacity='0'; diff.style.transform='translateY(20px)';
+    }
+  },
+
+  // ── S7 ──
+  { el: document.getElementById('s7'),
+    play(){
+      const step   = document.getElementById('s7-step');
+      const title  = document.getElementById('s7-title');
+      const col1   = document.getElementById('s7-col1');
+      const col2   = document.getElementById('s7-col2');
+      const bottom = document.getElementById('s7-bottom');
+
+      showFade(step, 100);
+      show(title, 400);
+      show(col1, 900);
+      show(col2, 1150);
+      show(bottom, 1700);
+    },
+    reset(){
+      hide(document.getElementById('s7-step'));
+      ['s7-title','s7-col1','s7-col2','s7-bottom'].forEach(id => {
+        const el = document.getElementById(id);
+        el.style.transition='none'; el.style.opacity='0'; el.style.transform='translateY(28px)';
+      });
+    }
+  },
+
+  // ── S8 ──
+  { el: document.getElementById('s8'),
+    play(){
+      const step    = document.getElementById('s8-step');
+      const title   = document.getElementById('s8-title');
+      const checks  = ['s8-c1','s8-c2','s8-c3'].map(id => document.getElementById(id));
+      const console_= document.getElementById('s8-console');
+      const result  = document.getElementById('s8-result');
+      const typeEl  = document.getElementById('s8-type');
+
+      showFade(step, 100);
+      show(title, 400);
+      checks.forEach((c, i) => {
+        tick(() => {
+          c.style.transition = TR;
+          reflow(c);
+          c.style.opacity='1'; c.style.transform='none';
+        }, 900 + i*280);
+      });
+      show(console_, 900 + 3*280 + 200);
+      typeText(typeEl, 'Request Indexing → URL Inspection → Submit', 45, 900+3*280+700, () => {
+        show(result, 200);
+      });
+    },
+    reset(){
+      hide(document.getElementById('s8-step'));
+      const title = document.getElementById('s8-title');
+      title.style.transition='none'; title.style.opacity='0'; title.style.transform='translateY(28px)';
+      ['s8-c1','s8-c2','s8-c3'].forEach(id => {
+        const el = document.getElementById(id);
+        el.style.transition='none'; el.style.opacity='0'; el.style.transform='translateY(18px)';
+      });
+      const con = document.getElementById('s8-console');
+      con.style.transition='none'; con.style.opacity='0'; con.style.transform='translateY(22px)';
+      document.getElementById('s8-type').textContent = '';
+      const cur = document.getElementById('s8-cursor');
+      if(cur) cur.style.display='none';
+      const res = document.getElementById('s8-result');
+      res.style.transition='none'; res.style.opacity='0'; res.style.transform='translateY(14px)';
+    }
+  },
+
+  // ── S9 ──
+  { el: document.getElementById('s9'),
+    play(){
+      const head   = document.getElementById('s9-head');
+      const tags   = ['s9-t1','s9-t2','s9-t3','s9-t4'].map(id => document.getElementById(id));
+      const bottom = document.getElementById('s9-bottom');
+
+      show(head, 100);
+      tags.forEach((t,i) => showBubble(t, 700 + i*200));
+      show(bottom, 700 + 4*200 + 200);
+    },
+    reset(){
+      const head = document.getElementById('s9-head');
+      head.style.transition='none'; head.style.opacity='0'; head.style.transform='translateY(28px)';
+      ['s9-t1','s9-t2','s9-t3','s9-t4'].forEach(id => {
+        const el = document.getElementById(id);
+        el.style.transition='none'; el.style.opacity='0'; el.style.transform='translateY(20px)';
+      });
+      const bot = document.getElementById('s9-bottom');
+      bot.style.transition='none'; bot.style.opacity='0'; bot.style.transform='translateY(20px)';
+    }
+  },
+
+  // ── S10 ──
+  { el: document.getElementById('s10'),
+    play(){
+      const pre   = document.getElementById('s10-pre');
+      const head  = document.getElementById('s10-head');
+      const checks = ['s10-c1','s10-c2','s10-c3'].map(id => document.getElementById(id));
+      const coda  = document.getElementById('s10-coda');
+
+      showFade(pre, 100);
+      show(head, 400);
+      checks.forEach((c,i) => {
+        tick(() => {
+          c.style.transition = TR;
+          reflow(c);
+          c.style.opacity='1'; c.style.transform='none';
+        }, 900 + i*320);
+      });
+      show(coda, 900 + 3*320 + 200);
+    },
+    reset(){
+      hide(document.getElementById('s10-pre'));
+      const head = document.getElementById('s10-head');
+      head.style.transition='none'; head.style.opacity='0'; head.style.transform='translateY(28px)';
+      ['s10-c1','s10-c2','s10-c3'].forEach(id => {
+        const el = document.getElementById(id);
+        el.style.transition='none'; el.style.opacity='0'; el.style.transform='translateY(18px)';
+      });
+      const coda = document.getElementById('s10-coda');
+      coda.style.transition='none'; coda.style.opacity='0'; coda.style.transform='translateY(18px)';
+    }
+  },
+
+  // ── S11 ──
+  { el: document.getElementById('s11'),
+    play(){
+      const not  = document.getElementById('s11-not');
+      const head = document.getElementById('s11-head');
+      const p1   = document.getElementById('s11-p1');
+      const p2   = document.getElementById('s11-p2');
+      const p3   = document.getElementById('s11-p3');
+      const coda = document.getElementById('s11-coda');
+
+      showFade(not, 100);
+      show(head, 500);
+      show(p1, 1400);
+      show(p2, 1650);
+      show(p3, 1900);
+      show(coda, 2400);
+    },
+    reset(){
+      hide(document.getElementById('s11-not'));
+      ['s11-head','s11-p1','s11-p2','s11-p3','s11-coda'].forEach(id => {
+        const el = document.getElementById(id);
+        el.style.transition='none'; el.style.opacity='0'; el.style.transform='translateY(22px)';
+      });
+    }
+  },
+
+  // ── S12 ──
+  { el: document.getElementById('s12'),
+    play(){
+      const label = document.getElementById('s12-label');
+      const head  = document.getElementById('s12-head');
+      const sub   = document.getElementById('s12-sub');
+      const feats = ['s12-f1','s12-f2','s12-f3','s12-f4'].map(id => document.getElementById(id));
+      const cta   = document.getElementById('s12-cta');
+
+      showFade(label, 100);
+      show(head, 400, TR_SLAM);
+      show(sub, 1000);
+      feats.forEach((f,i) => showBubble(f, 1400 + i*200));
+      show(cta, 1400 + 4*200 + 200);
+    },
+    reset(){
+      hide(document.getElementById('s12-label'));
+      const head = document.getElementById('s12-head');
+      head.style.transition='none'; head.style.opacity='0'; head.style.transform='scale(2.4) translateY(-12px)';
+      ['s12-sub','s12-cta'].forEach(id => {
+        const el = document.getElementById(id);
+        el.style.transition='none'; el.style.opacity='0'; el.style.transform='translateY(18px)';
+      });
+      ['s12-f1','s12-f2','s12-f3','s12-f4'].forEach(id => {
+        const el = document.getElementById(id);
+        el.style.transition='none'; el.style.opacity='0'; el.style.transform='translateY(20px)';
+      });
+    }
+  }
+
+];
+
+let current = 0;
+
+function goTo(idx){
+  if(idx < 0 || idx >= ctrls.length) return;
+  clearAll();
+  ctrls[current].el.classList.remove('active');
+  ctrls[current].reset();
+  current = idx;
+  ctrls[current].el.classList.add('active');
+  setTimeout(() => ctrls[current].play(), 40);
+  document.getElementById('nav').textContent = `${idx+1} / ${ctrls.length}`;
+}
+
+document.addEventListener('keydown', e => {
+  if      (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); goTo(current+1); }
+  else if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   { e.preventDefault(); goTo(current-1); }
+  else if (e.key === 'r' || e.key === 'R') { e.preventDefault(); clearAll(); ctrls[current].reset(); setTimeout(() => ctrls[current].play(), 40); }
+});
+
+goTo(0);
+</script>
+</body>
+</html>
